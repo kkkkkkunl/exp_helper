@@ -1,0 +1,28 @@
+schema: spec-driven
+
+context: |
+  Repository conventions:
+  - Store explanatory documentation, design notes, and ADRs in docs/.
+  - Store reusable static materials, templates, and layout resources in experiment-workflow/assets/.
+  - Store detailed reference material, domain rules, schemas, and operating guides in experiment-workflow/references/.
+  - Store executable tools and maintenance scripts in experiment-workflow/scripts/.
+  - Follow the existing documents in these directories when deciding where new content belongs; avoid duplicating or relocating existing files without an explicit request.
+  - Store historical OpenSpec change records in the project-root hisotry/ directory (the directory name is intentional). A record counts as user-approved Git history only after the user personally commits it.
+  - Do not automatically save drafts, stage files, commit, or push. Persist or overwrite project files only when the user explicitly requests the corresponding change.
+  - Ordinary experimental replies remain conversation drafts. Explicit stage confirmation, pause, or final-results submission authorizes the corresponding experiment writes; verified final results authorize automatic experiment-record archiving with inventory and evidence checks.
+  - Experiment-record archiving is separate from OpenSpec change archiving and user-controlled Git history. First installation asks for the calendar service and connects the corresponding host plugin or MCP; never assume a particular provider.
+
+rules:
+  tasks:
+    - Do not add automatic Git staging, commit, or push steps. Do not describe a change as part of project history until the user has personally committed it.
+
+operations:
+  apply:
+    guidance:
+      - Do not persist implementation changes merely because they were discussed or drafted; write files only for an explicitly requested implementation.
+      - Never automatically stage, commit, or push Git changes.
+  archive:
+    guidance:
+      - Archive only when the user explicitly requests it; do not automatically save or archive completed changes.
+      - After the OpenSpec archive operation, move the resulting change record from openspec/changes/archive/ into the project-root hisotry/ directory.
+      - Never automatically stage, commit, or push; only the user's own Git commit makes the record part of confirmed history.

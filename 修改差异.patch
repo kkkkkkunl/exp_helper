@@ -1,0 +1,1987 @@
+--- a/CHANGES.md
++++ b/CHANGES.md
+@@ -1,186 +1,9 @@
+-# v2.1 Obsidian 文档属性
++# v3：渐进加载与项目技能库
+ 
+-自动维护 status/completed/completed_at；保留自定义属性和标签；归档与补录同步状态，更新哈希基线。规则见 SKILL.md 的 Obsidian 文档属性章节。
+-
+-# v2 修改摘要（2026-11-01）
+-
+-- 修复 analysis_map 缺失字段误匹配，增加真实 skill 路径配置和可读性检查。
+-- 库存以 event_id 识别真实操作，增加整批快照校验、清单确认指纹、共享锁、事务日志恢复。
+-- 修复耗尽后归还、分装子管初始化；分装/混合成组检查；提交后清单状态更新。
+-- 新增 workflow.py：原话快照、请求重试、补录续接、记录人工修改保护、分析证据与最终归档检查。
+-- 结果/附件写入增加锁及结果同名预检；配置校验错误返回 ok:false。
+-- 新版接口、迁移及限制详见 references/v2-operations.md。
+-
+-以下为 v1 的历史说明，其中测试结论和安装环境描述仅代表当时版本。
+-
+----
+-
+-# 改动说明：从设计稿到可加载的 skill
+-
+-对照 `experiment-workflow-design/` 里三份文档，这份说明讲清楚**改了什么、为什么改、原条目去哪了**。
+-
+-## 一、文件去向
+-
+-| 原文件 | 去向 | 说明 |
+-|---|---|---|
+-| `DESIGN.md`（37 行概览） | 拆进 `SKILL.md` + `references/` | 概览丢规则，改为「流程 + 硬约束」和分册细则 |
+-| `GLOSSARY.md`（47 行） | `references/glossary.md` | 修正「实验方案」歧义，补 13 个缺失术语 |
+-| `REQUIREMENTS.md`（66 条） | 重写为 `references/*.md` 的 R-01…R-64 | 去重、删过期、拆分复合条目、按主题归并 |
+-| — | `assets/` | 新增：项目配置、记录、版式三份模板 |
+-| — | `scripts/` | 新增：5 个脚本承担确定性计算 |
+-
+-原 `REQUIREMENTS.md` 建议**归档为历史访谈记录**，不再作为实现依据，避免两份口径并存。
+-
+-## 二、阻塞项怎么解决的
+-
+-### 1. 没有 SKILL.md → 已补
+-
+-`SKILL.md` 带 frontmatter，`description` 同时覆盖中文（整理实验记录、登记样本库存、生成实验汇报）与英文（lab records、sample inventory、experiment reports）触发词。正文 156 行，只放流程与 10 条硬约束。
+-
+-### 2. 两份文件状态矛盾 → 已消除
+-
+-`DESIGN.md:3`「等待确认」与 `REQUIREMENTS.md:3`「访谈中」不再冲突：状态行只保留在历史文档里，skill 本身不带状态。
+-
+-### 3. 八处过期的「待明确」→ 已删除
+-
+-| 原位置 | 过期表述 | 已被谁解决 |
+-|---|---|---|
+-| `:15` | 时区和同秒碰撞待明确 | `:26` → R-03 |
+-| `:16` | 方案与方法层级待明确 | `:24` → R-06 |
+-| `:33` | 重复判定待明确 | `:39` → R-14 |
+-| `:35` | 再次分装编号待确认 | `:43` → R-22 |
+-| `:36` | 数量单位规则待确认 | `:41` → R-20 |
+-| `:40` | 浓度表达待确认 | `:46`、`:47` → R-37 |
+-| `:51` | 项目入口配置待确定 | `:67` → `schemas.md` |
+-| `:65` | skill 选择与失败处理待明确 | `:68` → R-47 |
+-
+-### 4. 两处「此条取代…」→ 已拆开
+-
+-- `:54` 的「与库存计算的关系待确认」删掉，关系已由 R-28～R-32 定死。
+-- `:65` 推翻了 `:22` 的**前半句**（统计分析），但**后半句「不修复科研图片」仍然有效**。已拆成两条：统计分析移交分析 skill（R-61），不修复图片保留（R-60）。整句删除会连带丢约束。
+-
+-### 5. 四个阻塞的「待明确」→ 给了可用 schema
+-
+-`schemas.md` 定义了项目配置、样本 frontmatter、结果版本、变更计划、状态目录五套结构，脚本按它实现并已跑通。
+-
+-## 三、术语冲突
+-
+-`GLOSSARY.md:10` 把「实验方案」定义为「可复用的计划」，而 `REQUIREMENTS.md:24` 把它当成「一级分区」。同名两义，而它恰好是记录主干。已拆成三个词：
+-
+-| 词 | 定义 | 规则 |
+-|---|---|---|
+-| 实验方案 | 记录中的一级分区 | R-06 |
+-| 参考方案 | 可复用的方法模板 | R-08 |
+-| 实验方法 | 本次实际执行的操作 | R-07 |
+-
+-另外补了 13 个缺失术语：实验方法、参考方案、方法模板、原始材料、原始附件、归档目录、台账、库存变更清单、分装、混合样本、净消耗、计算值/实测值、阶段草稿。
+-
+-「实验编号」的定义也从「识别实验记录」改为「识别一次实验执行」，与「一次执行一份记录」对齐。
+-
+-## 四、DESIGN.md 丢的 13 条规则
+-
+-全部补回，并落在明确位置：
+-
+-| 丢失规则 | 现在在哪 |
+-|---|---|
+-| 禁止跨质量/体积换算 | R-26 + 脚本硬拒绝 |
+-| 浓度沿用与稀释核实 | R-38 |
+-| 起始量不得反推 | R-28 + 脚本硬拒绝 |
+-| 不按名称猜库存编号 | R-33 + 脚本硬拒绝 |
+-| 库存变更类型枚举 | R-31 |
+-| 净消耗 = 取用 − 归还 | R-32 |
+-| Obsidian 索引与双向链接 | R-44、`schemas.md` |
+-| 在库列表简洁 + 历史保留 | R-41、R-42 |
+-| 多模板 + 默认模板 | `schemas.md`、`project.py template` |
+-| 一次执行一份记录 / 幂等 | R-01、R-12 |
+-| 标记不代表显著 | R-55 |
+-| 多组分浓度 | R-37 |
+-| 不修复科研图片 | R-60 |
+-| 额外损耗规则 | R-32 |
+-| 字母进位与补录 | R-21 |
+-| 测量对象 | R-37 |
+-
+-## 五、从「散文规则」到「散文 + 脚本」
+-
+-原设计要求模型每次用自然语言重算编号、库存、去重。多轮之后必然漂移，并发时还会撞号。现在分工：
+-
+-| 交给脚本（确定性） | 留在散文（判断） |
+-|---|---|
+-| 编号分配与并发锁 | 目的是什么 |
+-| 库存加减、单位换算校验 | 哪些样本该扣、扣多少 |
+-| 幂等键判定 | 冲突怎么问用户 |
+-| 哈希去重与归档校验 | 哪些结果该标记 |
+-| 结果版本与参数指纹 | 汇报怎么组织 |
+-
+-脚本只用标准库（目标环境没有 PyYAML，自带 YAML 子集解析器），全部输出 JSON，失败返回结构化错误码。
+-
+-### 已验证
+-
+-- YAML 子集往返测试 25 项通过
+-- 端到端 39 项通过：配置定位、编号分配、分装、两段式库存、幂等重放、库存不足拒绝、跨维度换算拒绝、归档去重与冲突、结果版本、标记保留、跨项目筛选
+-- 并发 6 进程同时分配编号 → A–F 无重复
+-
+-### 脚本清单
+-
+-| 脚本 | 职责 |
+-|---|---|
+-| `project.py` | 定位配置、校验、取模板、分析分发 |
+-| `allocate_id.py` | 实验编号、样本编号、分装编号（带锁） |
+-| `inventory.py` | 变更清单、提交、在库列表、历史 |
+-| `archive.py` | 归档移动、哈希去重、冲突暂停 |
+-| `results.py` | 结果项、版本、标记、跨项目筛选 |
+-
+-## 六、规则编号对照
+-
+-66 条原始条目 → 64 条原子规则。复合条目被拆开（例如 `:41` 同时讲单位、换算、未知量，拆成 R-20、R-25、R-26）。
+-
+-| 主题 | 原条目 | 新规则 |
+-|---|---|---|
+-| 记录结构与幂等 | `:7`、`:9`、`:10`、`:12`、`:13`、`:14` | R-01、R-02、R-12 |
+-| 编号 | `:15`、`:26`、`:34`、`:35`、`:43` | R-03、R-04、R-21、R-22、R-24 |
+-| 方案与方法 | `:16`、`:24`、`:25`、`:58` | R-06、R-07、R-08 |
+-| 目的 | `:53` | R-09 |
+-| 疑问不入记录 | `:11`、`:18`、`:31` | R-10 |
+-| 输入优先级 | `:17` | R-11 |
+-| 归档 | `:27`、`:32`、`:33`、`:39` | R-13、R-14、R-15 |
+-| 人工修改 | `:30` | R-16 |
+-| 库存单位与字段 | `:19`、`:36`、`:37`、`:40` | R-17、R-18、R-19 |
+-| 单位与换算 | `:41` | R-20、R-25、R-26、R-27 |
+-| 起始量 | `:59`、`:60` | R-28、R-29、R-30 |
+-| 变更类型与净消耗 | `:21`、`:44`、`:61` | R-31、R-32 |
+-| 具体编号 | `:57`、`:72` | R-33 |
+-| 两段式与幂等 | `:20`、`:31`、`:42` | R-34、R-35、R-36 |
+-| 浓度 | `:46`、`:47`、`:48` | R-37、R-38、R-39、R-40 |
+-| 视图与 Obsidian | `:28`、`:38`、`:45` | R-41、R-42、R-44 |
+-| 未登记试剂 | `:62` | R-43 |
+-| 分析分发 | `:65`、`:68` | R-45、R-46、R-47、R-48 |
+-| 结果项与版本 | `:69`、`:71` | R-49、R-50、R-51、R-52、R-53 |
+-| 标记 | `:66`、`:70` | R-54、R-55、R-56 |
+-| 汇报 | `:22`、`:23`、`:29` | R-57、R-58、R-59、R-60、R-61、R-62、R-63、R-64 |
+-| 混合样本 | `:49`、`:50` | R-23 |
+-
+-### 移出 skill 的条目
+-
+-| 原条目 | 原因 |
+-|---|---|
+-| `:3` 状态行 | skill 不需要记录访谈状态 |
+-| `:9` 先做通用模板再用真实实验跑通 | 开发过程规则，不是运行期行为 |
+-| `:55` 直接用正式目录、测试规则不写进 skill | 同上，且已由目录结构体现 |
+-
+-## 七、还剩什么要你拍板
+-
+-1. **实际路径**：知识库与项目放在哪。首次运行时 `project.py find` 找不到配置会问你，不会自建。
+-2. **方法模板规范**：你之前说后续补充。目前 skill 只约定「固定版本、默认值视为实操、用户更正优先」。
+-3. **已有台账迁移**：脚本目前不导入既有 Excel/表格。如果要迁移，需要给一份样例，我再加 `inventory.py import`。
+-4. **验证场景**：用一个真实实验跑通。建议先用一个已完成的实验走一遍，重点看归档和库存两段。
+-
+-## 八、怎么装
+-
+-把 `experiment-workflow/` 整个目录放到 skill 目录下即可（DSH 为 `~/.dsh/skills/`，或 magpie 的 skills 库）。目录名保持 `experiment-workflow`，与 frontmatter 的 `name` 一致。
+-
+-自测：
+-
+-```
+-python scripts/_test_yamlish.py
+-python scripts/_test_e2e.py
+-```
++- 入口缩短为按需路由，记录、结果、库存、归档、安装拆成独立参考页。
++- 校验按模块执行；只记录不读取技能索引或检查分析工具。
++- 新增 install.py 与 skill_store.py，项目内相对路径安装、维护索引、按名称定位。
++- 新增 organize 命令；结果整理、分析、归档独立。归档不以分析或整理完成为前提。
++- 文档只自动维护 completed/completed_at；无关补录保留标记，相关变化局部失效。
++- 每次记录完成返回 inventory_review；库存模块自动衔接，完整直接指令可作为该操作授权。
++- 旧版库存事务、事件幂等和人工修改保护保留。迁移规则见 references/v2-operations.md。
+--- a/SKILL.md
++++ b/SKILL.md
+@@ -1,144 +1,31 @@
+ ---
+ name: experiment-workflow
+-description: 根据用户提供的实验内容和数据整理可追溯的实验记录，按项目映射调用分析 skill，保存结果版本、归档记录并管理样品出入库。用于实验记录、补录、样品库存及实验结果整理；实际分析由已配置的专门 skill 执行。
++description: 记录和补录实验，整理已有结果，按名称调用项目内分析 skill，并管理样品库存。按用户本次需求加载对应模块；仅记录过程或附带数据不启动结果整理或分析。
+ ---
+ 
+-# 实验工作流
++# 实验工作流：按需入口
+ 
+-由模型提取事实、编写记录及调用分析 skill；本目录的 Python 脚本管理持久状态、文件、编号和库存。脚本使用 Python ≥3.9 标准库。路径来自项目根的 `experiment-project.yaml`。
++先明确本次任务，不预读全部参考文件、脚本或分析 skill 正文。`scripts/` 指本 skill 内脚本路径；Python ≥3.9，命令输出 JSON，检查 `ok`。
+ 
+-命令中的 `scripts/` 指本 skill 的脚本目录。普通脚本的 `--project` 放在子命令后；`workflow.py --project <项目根>` 放在子命令前。检查 JSON `ok`；失败不应记为完成。
++## 定位与加载
+ 
+-## 1. 定位项目和保存输入
++- 已有项目：`project.py find --path <工作目录>`。只有初始化/安装缺失时读 [安装与技能库](references/setup.md)，补齐项目内目录；不覆盖已有配置。
++- 当前输入含实验记录或补录：只读 [记录模块](references/record-module.md)。原始数据附件本身不触发分析。
++- 明确要求分析、计算、绘图、整理结果：读 [结果模块](references/result-module.md)。已知 skill 名称直接解析目标；未知名称先查轻量索引或类型映射。
++- 每次记录模块完成后，**自动读 [库存模块](references/inventory-module.md)** 并核查本轮操作。用户直接输入入库、报废、归还等指令，也独立进入库存模块。不主动询问是否要手动管理仓库。
++- 需要保存当前记录归档：读 [归档模块](references/archive-module.md)。未完成分析不阻塞归档。
++- 只有用户要求 PPT 时才读 [汇报规则](references/report-rules.md)。
+ 
+-运行 `project.py find --path <工作目录>`、`project.py validate --project <项目根>`。没有配置时确定项目路径后按 assets 模板配置；已有路径授权则直接使用。分析依赖不可用时继续记录输入与其他独立工作，将分析任务置为 blocked，不能伪造结果。
++不全量调用校验。记录用 `project.py validate --scope record`；库存用 `--scope inventory`；分析用 `--scope analysis --skill <名称>`；均带 `--project <项目根>`。`--scope all` 只用于用户主动要求全面诊断。
+ 
+-将用户原话保存为 UTF-8 文件。附件不改内容。创建或补录：
++## 共同约束
+ 
+-```bash
+-python scripts/workflow.py --project <项目根> start --request-id <本次输入唯一ID> --input <原话.txt> [--experiment <已有编号>]
+-python scripts/workflow.py --project <项目根> list
+-python scripts/workflow.py --project <项目根> status --experiment <编号>
+-```
++- 一次记录完成不代表实验结束；补录沿用原实验编号。恢复会话先查看任务状态。
++- 只记录实际提供的事实，保留原始材料；不从模板生成结果、测量值或研究目的。
++- 结果整理、数据分析、归档是独立状态。缺少分析工具时保存记录并标记内部分析任务受阻，不虚构结果。
++- 文档只自动维护 `completed`、`completed_at`：仅表示本次请求的已有结果是否整理完成。未请求结果整理的过程记录为 false/null；归档不会将它改为 true。
++- 日期/操作说明等无关补录保留结果完成标记；相关数据、参数、结果变化只使受影响任务失效。
++- 保留正文、已有标签及自定义属性。检测到人工修改时展示合并结果；已获明确授权则按授权范围执行。
++- 不修复科研原图；不自动覆盖同名冲突；样品单位、库存确认及恢复规则只在库存模块加载。
+ 
+-重试沿用 request-id；不同输入用新 ID。同一实验的补充输入显式指定原编号。恢复会话先 list/status，不仅凭会话内是否出现编号判断。无法确定是否同一次实验时询问，避免重复建档。
+-
+-原话快照写入 `原始输入/`；进度写入 `.experiment-workflow/workflow.json`。新输入使旧记录和分析状态待更新。
+-
+-## 2. 先记录实验，再分析
+-
+-提取实际日期、目的、参考方法、实际操作、样品编号、用量与原始数据。用户明确输入优先；与附件冲突仍需确认。不要从模板生成测量值、结果或研究目的。
+-
+-按需运行 `project.py template --project <项目根> [--name <模板>]`。无模板可按实际操作记录；多个模板无默认时再选择。固定本次使用的模板内容和版本。
+-
+-使用 `assets/experiment-record.template.md` 编写候选文件，再写入：
+-
+-```bash
+-python scripts/workflow.py --project <项目根> record --experiment <编号> --file <候选记录.md>
+-```
+-
+-### Obsidian 文档属性（固定字段、动态值）
+-
+-`record` 自动在记录顶部写入 YAML 属性，不依赖模型手填：
+-
+-```yaml
+----
+-status: in_progress
+-completed: false
+-completed_at: null
+-tags:
+-  - experiment
+----
+-```
+-
+-`status`、`completed`、`completed_at` 是 skill 管理的固定属性名。生成或更新记录时为 `in_progress` / `false` / `null`；仅 `finalize` 检查通过后改为 `completed` / `true` / 实际完成时间（北京时间，YYYY-MM-DDTHH:mm:ss）。不能提前标记完成。完成只代表记录与归档流程完成，不代表实验结果成功。
+-
+-补录、重新分析或更新任务状态会同步撤销完成标记和时间。`status/list` 检测到归档后文件变化时也同步撤销。没有后台文件监听：外部手工编辑后，须再次运行工作流命令才能同步属性。
+-
+-没有 tags 时默认添加 `experiment`；已有 tags 保留原值。其他自定义 YAML 属性和正文保留；候选记录未提供的旧自定义属性会继承。属性须使用顶层 YAML 映射，不使用 JSON/流式映射形式。不要手工改这三个自动管理字段来绕过最终归档检查。
+-
+-疑问保存在任务 issues：`workflow.py ... issues --experiment <编号> --file <字符串数组.json>`；解决后更新，全部解决用 `[]`。最终记录中不放疑问或 TODO，不因去掉疑问而把未知量写成已知。
+-
+-已有记录被人工修改时，脚本拒绝覆盖并返回当前哈希。读取差异并保留人工内容，展示合并结果；获得用户确认后才传 `--approve-current-hash <当前哈希>`。历史版本自动保留。该参数记录确认依据，不验证真实用户身份。
+-
+-## 3. 归档原始附件并选择分析 skill
+-
+-```bash
+-python scripts/archive.py move --project <项目根> --experiment <编号> --files <附件...>
+-python scripts/project.py dispatch --project <项目根> --experiment-type <类型> --data-type <类型>
+-```
+-
+-归档会校验后删除源文件；将返回链接回填记录。同名冲突、疑似重复文件分别处理，未解决项加入 issues。归档成功后分析应使用归档路径。
+-
+-路由按 `analysis_map` 中声明的全部条件精确匹配，不把缺失字段当匹配。读取返回的 `skill_path`，遵循该 skill 的工具和参数要求。`available` 只表示配置文件可读，仍须核查该 skill 所需工具。多候选时询问；多种数据分别建立任务。
+-
+-开始任务：`workflow.py ... analysis --experiment <编号> --task <任务ID> --status pending`。
+-无法继续：同命令用 `--status blocked --reason <具体原因>`。
+-确实无需分析且无分析任务：用 `--status none --reason <依据>`。
+-
+-实际运行分析后：
+-
+-```bash
+-python scripts/results.py new --project <项目根> --experiment <编号> --title <结果名>
+-python scripts/results.py add-version --project <项目根> --id <结果编号> --files <输出文件...> --params <参数说明>
+-python scripts/workflow.py --project <项目根> analysis --experiment <编号> --task <任务ID> --status completed --skill <名称> --skill-version <版本或SKILL文件哈希> --inputs <归档数据...> --outputs <本实验results内的结果文件...> --params <参数与工具版本>
+-```
+-
+-最后一条保存输入/输出哈希、skill 版本和参数，并要求重新回填记录。它登记真实执行证据，不会自行执行统计分析。将分析结果写入候选记录，再调用 record。结果标记仍由用户决定，默认未标记。
+-
+-## 4. 样品出入库
+-
+-先标明是否有库存变更：
+-
+-```bash
+-python scripts/workflow.py --project <项目根> inventory --experiment <编号> --mode required
+-# 确实没有变更时使用 --mode none --reason <依据>
+-```
+-
+-新样品先 `allocate_id.py sample --project <项目根> --date YYYYMMDD`；分装先 `allocate_id.py aliquot --project <项目根> --parent <来源编号> --count <数量>`。分配只建立未知数量的样品，不等于完成入库。
+-
+-每次实际操作使用一个稳定 event_id。两次真实取样，即使其他内容完全相同，也必须不同 ID；重试必须沿用原 ID。不要为重试随意生成新 ID。示例：
+-
+-```json
+-[
+-  {"event_id":"prepare-1","sample":"20261101-A","type":"create","delta":10,"unit":"mL","location":"4℃ A2"},
+-  {"event_id":"draw-1","sample":"20261101-A","type":"consume","delta":-2,"unit":"mL"},
+-  {"event_id":"draw-2","sample":"20261101-A","type":"consume","delta":-2,"unit":"mL"}
+-]
+-```
+-
+-```bash
+-python scripts/inventory.py plan --project <项目根> --experiment <编号> --items <变更.json>
+-# 展示生成的清单，取得本清单的确认后再执行：
+-python scripts/inventory.py commit --project <项目根> --experiment <编号> --plan-hash <返回的plan_hash> --confirmed-by <确认人及确认依据>
+-```
+-
+-当前默认策略保留库存确认；已有明确授权按其范围执行，不把本次修改 skill 的授权解释为真实库存授权。脚本记录确认人和清单指纹，不验证身份。清单生成后台账发生变化须重新生成和确认。
+-
+-分装/混合使用 group_id 成组提交，详见 `references/v2-operations.md`。样品编号必须明确；未知起始量不反推，不按相似名称扣库存。归还可恢复耗尽样品的在库状态；废弃样品不能直接恢复。
+-
+-脚本使用样本库级 OS 锁，所有样品写入先整批校验。发生存储写入中断时保留事务日志，下次脚本访问先恢复整批提交。恢复前不要手改台账或删除日志；外部编辑器不受脚本锁约束。
+-
+-## 5. 最终归档
+-
+-分析、库存和待办处理完成后，回填记录并执行：
+-
+-```bash
+-python scripts/workflow.py --project <项目根> finalize --experiment <编号>
+-```
+-
+-检查记录已回填、分析已完成或明确不需要、库存已提交或明确无变更、issues 为空、证据文件哈希一致；通过才生成 `归档清单.json` 并标记 completed。归档后文件变化，status 会提示重新整理；补充输入不建立另一份实验记录。
+-
+-这是结构和一致性校验，不替代科学判断。交付前按 `references/record-rules.md` 核对真实日期、数值出处、样品/附件链接是否能打开及是否遗漏材料。
+-
+-用户需要汇报时，按 `references/report-rules.md` 生成可编辑 PPT 并链接到记录。结论和后续计划只使用用户提供的文字；PPT 人工修改先展示合并方案。PPT 生成仍依赖可用的专门工具，不是必经步骤。
+-
+-## 数据约束与参考
+-
+-- 不修改科研原始图片；不自动覆盖同名冲突。
+-- 没有依据不跨质量/体积换算；计算浓度标为计算值，与实测值分开。
+-- 未登记为库存对象的试剂只记录实际用量。
+-- `references/v2-operations.md`：新增命令、事件、恢复、迁移与限制。
+-- `references/record-rules.md`、`inventory-rules.md`：记录和样品业务规则。
+-- `references/analysis-dispatch.md`、`schemas.md`：结果与字段定义；v2 新增字段见 v2-operations。
+-- `references/report-rules.md`、`assets/`：按需汇报与模板。
++项目内分析技能库为 `skills/analysis/`，索引路径与条目路径相对项目根。按名称只读取索引中的目标条目和目标 SKILL.md，不扫描其他正文。缺失名称提示缺少依赖；同名冲突拒绝自动覆盖。
+--- a/assets/experiment-project.template.yaml
++++ b/assets/experiment-project.template.yaml
+@@ -1,15 +1,13 @@
+-# 复制到项目根并改名 experiment-project.yaml；路径相对项目根。
+-version: 2
++# 安装时自动生成；路径均相对项目根。
++version: 3
+ project: 未命名课题
+-knowledge_base: ../kb
++knowledge_base: .
+ sample_library: samples
+ ppt_template: null
+ method_templates: []
+-# 需要模板时添加 name/path/version/default；path 必须指向已有文件。
++analysis_skill_repository: skills/analysis
+ analysis_map: []
+-analysis_skills: {}
+-# 示例请见 references/v2-operations.md。配置的是实际 SKILL.md 路径，
+-# 不要把 flow-analysis 等示例名称当成已安装依赖。
++# analysis_map 只填索引中的名称，路径由 skills/analysis/index.json 提供。
+ units:
+   convert:
+     - [uL, mL]
+--- a/assets/experiment-record.template.md
++++ b/assets/experiment-record.template.md
+@@ -1,9 +1,6 @@
+ ---
+-status: in_progress
+ completed: false
+ completed_at: null
+-tags:
+-  - experiment
+ ---
+ 
+ # {{实验编号}}
+--- a/references/analysis-dispatch.md
++++ b/references/analysis-dispatch.md
+@@ -8,7 +8,7 @@
+ python scripts/project.py dispatch --experiment-type 流式 --data-type fcs
+ ```
+ 
+-**R-46** 在 analysis_skills 中配置实际 SKILL.md 路径；available 仅表示该文件可读。命中后**加载该 skill 并遵循它规定的工具与分析要求**。本 skill 不重复定义统计方法。
++**R-46** 在项目 skills/analysis/index.json 中按名称定位实际 SKILL.md；available 表示文件可读且索引哈希一致。命中后**加载该 skill 并遵循它规定的工具与分析要求**。本 skill 不重复定义统计方法。
+ 
+ **R-47** 无匹配、工具不可用、或必要分析信息不足时：在对话中提出，继续完成不依赖分析的整理，**不虚构结果**。
+ 
+@@ -55,4 +55,4 @@
+ 
+ ## v2 运行证据
+ 
+-使用 workflow.py analysis 登记任务状态、skill 版本、输入/输出哈希与参数，实际执行由已加载的分析 skill 完成。命令及归档要求见 `v2-operations.md`。
++使用 workflow.py analysis 登记任务状态、skill 版本、输入/输出哈希与参数，实际执行由已加载的分析 skill 完成。命令及归档要求见 `result-module.md`。
+--- a/references/archive-module.md
++++ b/references/archive-module.md
+@@ -0,0 +1,22 @@
++# 保存当前记录归档
++
++```bash
++python scripts/workflow.py --project <项目根> finalize --experiment <编号>
++```
++
++需已写入本轮记录并完成自动库存核查；有库存操作时本轮计划须已提交。归档保存当前记录、附件及已有结果，并在清单保留待分析、待整理或未解决事项。**分析和结果整理未完成不阻塞归档**，不得为了归档把它们伪标完成。
++
++归档仅维护内部 archived/archived_at，不向文档增加 status、analysis_status、archived 等属性，也不改变 completed/completed_at。文档两个属性只来自结果整理任务：
++
++```yaml
++---
++completed: false
++completed_at: null
++---
++```
++
++只有已请求的已有结果全部整理完毕才是 true/实际北京时间。纯过程记录无需建立整理任务，保持 false/null，仍可归档。
++
++归档清单检查原始输入和当前记录哈希；分析证据异常保留为待处理任务。检查正文数值出处、附件及样品链接。归档不代表实验成功、科学审核通过或分析完成。
++
++新的记录、任务变化或归档材料变化使内部归档状态失效，可重新归档；是否撤销结果整理标记由变化是否影响结果决定。status/list 在下次调用时检测外部文件变化，没有后台监听。
+--- a/references/inventory-module.md
++++ b/references/inventory-module.md
+@@ -0,0 +1,34 @@
++# 库存模块
++
++触发：每次记录模块完成后自动进入；或用户直接发出入库、取用、归还、分装、转移、报废指令。无需询问“是否要手动管理仓库”。
++
++核查**本轮新操作**，不重放旧实验过程。新轮次的库存状态为 review_pending。
++
++- 没有实际库存变化：`workflow.py ... inventory --experiment <编号> --mode none --reason <核查依据>`，直接结束，不询问。
++- 存在变化：先 `workflow.py ... inventory --experiment <编号> --mode required`，再生成本轮计划。已有记录可接受独立库存操作；无实验编号时先保存该库存指令为一次可追溯记录。
++
++```bash
++python scripts/project.py validate --project <项目根> --scope inventory
++python scripts/inventory.py plan --project <项目根> --experiment <编号> --items <变更.json>
++python scripts/inventory.py commit --project <项目根> --experiment <编号> --plan-hash <指纹> --confirmed-by <确认人及授权依据>
++```
++
++## 授权规则
++
++从实验描述提取或推导的变更，展示清单，确认后提交。用户已明确给出信息完整的具体指令，例如“报废样品 A，全部报废”，即为该项授权：读取实际库存、生成具体清单后直接提交，不重复确认；在 confirmed-by 记录对应原始输入/request-id。没有推导权限时不扩展到其他样品或操作。
++
++数量、编号或单位不明确时只询问缺失信息；未知起始量不能反推，不按相似名称扣减。
++
++## 事件和数据
++
++每项用稳定 event_id。真实两次相同取样用不同 ID，重试同一操作沿用原 ID。例：
++
++```json
++[{"event_id":"draw-1","sample":"20261101-A","type":"consume","delta":-2,"unit":"mL"}]
++```
++
++新样品先 allocate_id.py sample；分装先 allocate_id.py aliquot。新增入库用 create；报废用 discard 和实际负数量；归还用 return 和正数量。未登记试剂只记录用量。
++
++分装/混合才读取 [库存细则](inventory-rules.md) 和 [分组与恢复细节](inventory-transactions.md) 的对应段落。group_id 把来源和去向成组校验；无密度依据不跨质量/体积换算；计算浓度不得冒充实测。
++
++脚本整批快照校验、共享锁、事务日志保持不变。清单后库存变化时重算；存储故障后下次访问先恢复，不删除事务日志。提交后可归档；相同事件重试跳过，不重复记账。
+--- a/references/inventory-rules.md
++++ b/references/inventory-rules.md
+@@ -53,7 +53,7 @@
+ inventory.py commit --plan-hash <指纹> --confirmed-by <确认依据> → 确认后才写台账
+ ```
+ 
+-**没有用户确认不得 commit。** 等待确认期间继续整理记录和 PPT。
++**没有授权不得 commit。** 用户直接给出信息完整的具体库存指令，可作为该项授权，不重复确认；从实验描述推导出的变更须展示清单并确认。等待确认期间继续独立的记录工作。
+ 
+ **R-35** 幂等：每个真实变更项有独立 event_id；重试沿用该 ID，重复运行只跳过、不重复扣减。不要靠"看一眼清单里有没有"来判断。
+ 
+@@ -81,4 +81,4 @@
+ 
+ ## v2 执行约定
+ 
+-分装/混合的 group_id、确认指纹、事务恢复和迁移规则见 [v2-operations.md](v2-operations.md)。
++分装/混合的 group_id、确认指纹、事务恢复和迁移规则见 [inventory-transactions.md](inventory-transactions.md)。
+--- a/references/inventory-transactions.md
++++ b/references/inventory-transactions.md
+@@ -0,0 +1,35 @@
++# 库存事件、分组与恢复
++
++## 库存事件
++
++每项必须有 event_id，唯一性范围为一次实验。它对应一次真实操作，不是内容哈希。重放同一 ID/内容跳过，修改已提交 ID 的内容报错；同一批重复 ID 报错。数量和单位在输入事件中应保持原始表达，重试不要把 2 mL 改写成 2000 uL；需更正时单独核查并保留历史。
++
++新增字段：event_id、fingerprint、status；计划增加 snapshots（台账内容哈希）、hash（计划指纹）、status、confirmed_by、committed_at。提交需传计划 hash 和确认依据。确认参数仅是留痕，并不是用户身份验证系统。
++
++提交后保留已提交计划，更新 Markdown 清单状态，并将完整收据保存在实验 `.experiment-workflow/commits/<计划哈希>.json`。再次 commit 同一计划返回 noop:true。再次 plan 已提交事件生成空的已提交计划，不重复记账。
++
++### 分装
++
++先 allocate_id.py aliquot 建子管；新管数量 null 可由 aliquot_in 初始化。示例：
++
++```json
++[
++  {"event_id":"split-out","group_id":"split-1","sample":"20261101-A","type":"aliquot_out","delta":-2,"unit":"mL"},
++  {"event_id":"split-in","group_id":"split-1","sample":"20261101-A-1","type":"aliquot_in","delta":2,"unit":"mL"}
++]
++```
++
++每组恰好一个来源转出，子管 parent 必须一致，同维度换算后转入合计须等于转出。实际损耗另列独立 consume 事件并注明依据。不要用“create 子管”绕过分装成组检查。
++
++### 混合
++
++先 `allocate_id.py sample --kind mixed` 建新样品，使用同一 group_id 把 mixed_out 和一个 mixed_in 组成一组。mixed_in 的 sources 列出所有转出样品编号；提交写回来源关系。新样品数量由用户实际信息确定，不假设混合总体积必然等于各成分相加。新浓度仍需核实，不能自动继承某一来源。
++
++## 一致性与恢复范围
++
++库存 plan、commit、list、history 以及编号分配共用样品库 `.stock.lock`。使用 OS 锁，进程退出后由系统释放，不按 120 秒删除仍有效的锁。不能靠删除锁文件解锁。
++
++提交先验证所有样品快照，再生成 `.transaction.json`，其中保存本批所有目标内容（台账、收据、清单）。随后逐文件原子替换。若中途存储失败或进程退出，后续脚本访问先按日志完成提交，恢复失败就报错而不返回库存数据。业务校验失败不会开始写任何台账。
++
++这提供脚本访问范围内的整批验证和可恢复提交，不声称多个 Markdown 文件在文件系统层面同时替换。外部 Obsidian/编辑器可能看到恢复前的中间文件，不受脚本锁约束；事务待恢复时不要手改样品文件或删除日志。不同机器/网络共享文件系统的锁行为及 Windows 分支未在本次 Linux 环境验证。
++
+--- a/references/record-module.md
++++ b/references/record-module.md
+@@ -0,0 +1,33 @@
++# 记录模块
++
++本模块不要求分析需求判定，不读结果模块，不校验分析 skill。
++
++1. 保存用户原话为 UTF-8 文本；`project.py validate --project <项目根> --scope record`。
++2. 新建或补录：
++
++```bash
++python scripts/workflow.py --project <项目根> start --request-id <输入唯一ID> --input <原话.txt> [--experiment <已有编号>]
++```
++
++重试复用 request-id；新输入用新 ID，同一实验补录带原编号。跨会话先 list/status。不能仅凭当前会话没有编号而重复建实验。
++
++3. 依据 `assets/experiment-record.template.md` 填写实际日期、目的、方法、已有结果和附件。缺少内容不编造；待确认事项记在内部 issues，记录正文不放 TODO。需要模板时才调用 `project.py template` 并读取选中模板。
++4. 附件归档可用 `archive.py move --project ... --experiment ... --files ...`。它校验后移动原文件；冲突保留源并记录问题，链接回填记录。
++5. 保存候选记录：
++
++```bash
++python scripts/workflow.py --project <项目根> record --experiment <编号> --file <候选.md>
++```
++
++命令自动写 completed/completed_at，保留其他属性；已有人工改动时，读取差异并展示合并，确认后传 --approve-current-hash。脚本保留历史副本。
++
++6. 返回 next_action:inventory_review 后**立即进入库存模块**，无需用户另外请求。每次 record 都形成新记录轮次并重新核查库存，但不能把旧轮次事件重复当成新操作。库存无变化直接登记 none，不询问用户是否手动管理库存。
++7. 记录和库存核查完成后按归档模块保存当前版本；无需进入分析模块。
++
++## 局部失效
++
++只补日期、操作描述且不影响结果时，沿用已有整理完成状态，不清空分析任务。相关数据或参数发生变化时，在 start 传 `--affects-analysis <分析任务ID...>`、`--affects-results <整理任务ID...>`，只标记这些任务及其已关联整理任务为 pending。任务 ID 可从 status 查询。
++
++record 比较“结果”章节：只有一个整理任务时可直接定位；多个任务且无法定位变化范围时要求传 `--affects-results <ID...>`，不重置全部任务。外部修改范围未知时内部记录待定位状态并暂时清空总体完成标记，各任务历史保留；确认受影响范围后仅重置对应任务。不要把改变结果含义的操作更正误归为无关补录。
++
++外部修改文件后的检测在下次 status/list/工作流命令发生，没有后台监听。人工修改保护不因状态同步而失效。
+--- a/references/result-module.md
++++ b/references/result-module.md
+@@ -0,0 +1,35 @@
++# 结果整理与按需分析
++
++仅用户明确要求整理结果、分析、计算或绘图时进入。已有图片/表格的整理不必启动新的数据分析。
++
++## 整理已有结果
++
++1. 用 `workflow.py ... organize --experiment <编号> --task <整理任务ID> --status pending` 建立本次要求的整理任务。
++2. 用 results.py new/add-version 保存结果及版本；编号、版本和图表引用写入候选实验记录。
++3. 调用 workflow.py record 回填记录，按其返回值自动执行库存核查。
++4. 已要求的结果确实整理到记录后登记：
++
++```bash
++python scripts/workflow.py --project <项目根> organize --experiment <编号> --task <整理任务ID> --status completed --files <本实验内结果文件...> [--analysis-tasks <相关分析任务ID...>]
++```
++
++organize 维护结果文件证据、与分析任务的关联及完成时间。所有已请求的整理任务完成才将文档 completed 设为 true；有一个待整理则 false/null。分析任务尚未完成不妨碍整理已有结果，也不阻塞归档。
++
++## 需要实际分析时
++
++已知名称：`skill_store.py --project ... resolve --name <名称>`；直接读取返回的目标 SKILL.md。不读全库正文。
++
++未知名称：先使用配置的 `project.py dispatch --project ... --experiment-type ... --data-type ...`；必要时查询 `skill_store.py ... list` 的短索引。匹配使用规则中所有条件；多候选询问，不猜。缺失目标记录 blocked 并保留记录，不自动下载。安装/索引过期时才读取 setup.md。
++
++加载目标 skill 后遵循它的工具要求，再校验目标：`project.py validate --project ... --scope analysis --skill <名称>`。available 只表示文件可读且索引吻合，不代表工具全部可用。
++
++```bash
++python scripts/workflow.py --project <项目根> analysis --experiment <编号> --task <分析任务ID> --status pending
++# 不能执行：--status blocked --reason <原因>
++# 实际分析执行完成后：
++python scripts/workflow.py --project <项目根> analysis --experiment <编号> --task <分析任务ID> --status completed --skill <名称> --skill-version <版本或哈希> --inputs <归档数据...> --outputs <本实验内输出...> --params <参数和工具版本>
++```
++
++分析任务与整理任务独立。更新某分析的输入、输出或参数，仅重置通过 --analysis-tasks 关联的整理任务；不重置其他结果。不要把输出文件生成直接解释为已整理到记录。
++
++原始证据留存，结果默认不标记精选，用户决定标记。仅调整日期等无关记录内容时保留已完成状态；修改结果材料或相关数据时重新整理受影响任务。
+--- a/references/schemas.md
++++ b/references/schemas.md
+@@ -1,6 +1,6 @@
+ # 数据结构定义
+ 
+-v2 新增状态、确认指纹、事务日志及工作流文件见 [v2-operations.md](v2-operations.md)。下列示例展示基础字段，库存提交以脚本生成的完整 v2 计划为准。
++v3 工作流语义见 record-module/result-module/archive-module；库存确认指纹和事务日志见 [inventory-transactions.md](inventory-transactions.md)。下列示例展示基础字段，库存提交以脚本生成的完整 v2 计划为准。
+ 
+ 所有状态文件使用 YAML 子集。脚本自带解析器，**不要用 PyYAML**（目标环境可能没有）。
+ 
+@@ -28,7 +28,8 @@
+ ## experiment-project.yaml
+ 
+ ```yaml
+-version: 1
++version: 3
++analysis_skill_repository: skills/analysis
+ project: 示例课题                      # 显示名
+ knowledge_base: ../kb                 # 相对项目根
+ sample_library: samples               # 相对知识库根
+@@ -141,4 +142,12 @@
+ | `ids.lock` | 编号分配锁 |
+ | `committed.yaml` | 已提交的变更批次 |
+ 
+-v2 使用 OS 文件锁，进程退出后释放；不按时间删除锁文件。库存日志和新字段见 `v2-operations.md`。
++v2 使用 OS 文件锁，进程退出后释放；不按时间删除锁文件。库存日志和新字段见 `inventory-transactions.md`。
++
++## v3 文档属性与内部状态
++
++实验记录只自动维护 completed、completed_at，表示结果整理完成，不表示分析完成或已归档。没有整理任务时为 false/null。status 不再是文档的自动属性；已有其他自定义属性保留。
++
++内部 workflow.json 的 result_tasks 保存整理任务状态、完成时间、结果证据及 analysis_tasks 关联；analysis 保存实际分析进度；archived/archived_at 保存归档状态；inventory 保存本轮库存核查状态。新存储的本项目文件路径相对项目根，随项目目录迁移。
++
++记录轮次每次 record 增加，库存变为 review_pending；原有结果是否失效按受影响任务判断，不全量重置。
+--- a/references/setup.md
++++ b/references/setup.md
+@@ -0,0 +1,54 @@
++# 安装与项目技能库
++
++仅在安装、首次初始化、技能库维护时读取本页。
++
++## 安装主 skill
++
++```bash
++python <解压目录>/experiment-workflow/scripts/install.py --project <项目根>
++```
++
++新项目建立最小配置（knowledge_base 为项目根，sample_library 为 samples），复制主 skill 并建立：
++
++```text
++项目根/
++├── experiment-project.yaml
++├── samples/
++└── skills/
++    ├── experiment-workflow/
++    └── analysis/
++        └── index.json
++```
++
++安装依赖显式项目路径，不把当前任意目录当成项目。已有配置不覆盖；主 skill 同名目录已存在时拒绝覆盖。
++
++手动复制安装时，首次使用运行：
++
++```bash
++python <主skill>/scripts/install.py --project <项目根> --init-only
++```
++
++它仅补齐缺失配置、项目内目录和空索引，不复制或覆盖主 skill。已有项目配置的外部知识库不自动新建。此行为由安装命令或首次使用入口执行，不依赖宿主提供安装钩子。
++
++配置 `analysis_skill_repository: skills/analysis`；所有技能索引路径相对项目根。项目技能库不接受绝对路径、越出项目的路径或符号链接。
++
++## 安装、更新分析 skill
++
++```bash
++python scripts/skill_store.py --project <项目根> install --source <待安装skill目录>
++python scripts/skill_store.py --project <项目根> refresh
++```
++
++install 从 SKILL.md frontmatter 读取 name、description、可选 version/input_types，复制到 `<库>/<name>/` 并更新 index.json。同名存在时报错，不自动覆盖。更新已安装内容须先明确更新范围，再执行 refresh；refresh 只在维护阶段枚举元信息并计算文件哈希，检测重复名称后整份拒绝，不留下部分新索引。
++
++不自动下载缺失技能。未提供任何专业分析 skill 时保留空技能库。
++
++## 日常定位
++
++```bash
++python scripts/skill_store.py --project <项目根> resolve --name <skill名称>
++```
++
++只查索引并校验该目标的哈希。返回 available:false 时保留当前记录，提示缺失或索引过期，不自动读遍所有正文。
++
++未知名称时 `list` 返回轻量名称/用途索引，或 `project.py dispatch` 按已配置 analysis_map 找名称。只有命中唯一目标才读取该目标 SKILL.md，继续检查它的工具要求。analysis_map 只存名称和匹配条件，不重复配置绝对路径。
+--- a/references/v2-operations.md
++++ b/references/v2-operations.md
+@@ -1,83 +1,9 @@
+-# v2 操作、迁移与恢复
++# v2 → v3 迁移说明
+ 
+-## 配置分析 skill
++本页仅用于升级，不是日常入口。
+ 
+-`analysis_map` 定义语义匹配，`analysis_skills` 指向实际可读的 SKILL.md（相对项目根，或绝对路径）：
+-
+-```yaml
+-analysis_map:
+-  - match:
+-      experiment_type: 流式
+-      data_type: fcs
+-    skill: flow-analysis
+-analysis_skills:
+-  flow-analysis: skills/flow-analysis/SKILL.md
+-```
+-
+-此规则要求实验类型和数据类型都匹配。不提供 data_type 不会误命中。路由返回名称、路径及 available；工具依赖须加载具体 skill 后核查。包内不含 flow-analysis、qpcr-analysis 或其他专门分析实现。
+-
+-未配置分析可用 `analysis_map: []`、`analysis_skills: {}`；需要分析但未匹配时将任务 blocked，不能把“缺工具”记为“无需分析”。project.validate 的配置错误现在返回 ok:false 和非零退出码。没有方法模板时 template 返回 template:null，可按实际输入记录。
+-
+-## 库存事件
+-
+-每项必须有 event_id，唯一性范围为一次实验。它对应一次真实操作，不是内容哈希。重放同一 ID/内容跳过，修改已提交 ID 的内容报错；同一批重复 ID 报错。数量和单位在输入事件中应保持原始表达，重试不要把 2 mL 改写成 2000 uL；需更正时单独核查并保留历史。
+-
+-新增字段：event_id、fingerprint、status；计划增加 snapshots（台账内容哈希）、hash（计划指纹）、status、confirmed_by、committed_at。提交需传计划 hash 和确认依据。确认参数仅是留痕，并不是用户身份验证系统。
+-
+-提交后保留已提交计划，更新 Markdown 清单状态，并将完整收据保存在实验 `.experiment-workflow/commits/<计划哈希>.json`。再次 commit 同一计划返回 noop:true。再次 plan 已提交事件生成空的已提交计划，不重复记账。
+-
+-### 分装
+-
+-先 allocate_id.py aliquot 建子管；新管数量 null 可由 aliquot_in 初始化。示例：
+-
+-```json
+-[
+-  {"event_id":"split-out","group_id":"split-1","sample":"20261101-A","type":"aliquot_out","delta":-2,"unit":"mL"},
+-  {"event_id":"split-in","group_id":"split-1","sample":"20261101-A-1","type":"aliquot_in","delta":2,"unit":"mL"}
+-]
+-```
+-
+-每组恰好一个来源转出，子管 parent 必须一致，同维度换算后转入合计须等于转出。实际损耗另列独立 consume 事件并注明依据。不要用“create 子管”绕过分装成组检查。
+-
+-### 混合
+-
+-先 `allocate_id.py sample --kind mixed` 建新样品，使用同一 group_id 把 mixed_out 和一个 mixed_in 组成一组。mixed_in 的 sources 列出所有转出样品编号；提交写回来源关系。新样品数量由用户实际信息确定，不假设混合总体积必然等于各成分相加。新浓度仍需核实，不能自动继承某一来源。
+-
+-## 一致性与恢复范围
+-
+-库存 plan、commit、list、history 以及编号分配共用样品库 `.stock.lock`。使用 OS 锁，进程退出后由系统释放，不按 120 秒删除仍有效的锁。不能靠删除锁文件解锁。
+-
+-提交先验证所有样品快照，再生成 `.transaction.json`，其中保存本批所有目标内容（台账、收据、清单）。随后逐文件原子替换。若中途存储失败或进程退出，后续脚本访问先按日志完成提交，恢复失败就报错而不返回库存数据。业务校验失败不会开始写任何台账。
+-
+-这提供脚本访问范围内的整批验证和可恢复提交，不声称多个 Markdown 文件在文件系统层面同时替换。外部 Obsidian/编辑器可能看到恢复前的中间文件，不受脚本锁约束；事务待恢复时不要手改样品文件或删除日志。不同机器/网络共享文件系统的锁行为及 Windows 分支未在本次 Linux 环境验证。
+-
+-## 记录与任务状态
+-
+-- start 保存原话快照；request-id 用于重试，补录显式带原实验编号。
+-- record 保存生成哈希和历史副本，拒绝未获确认的人工修改覆盖。
+-- analysis 保存任务状态、skill 名称及版本、输入/输出哈希和参数；实际运行由模型调用外部 skill。
+-- issues 保存未解决事项，不进入最终记录正文。
+-- inventory required/none 记录是否需要库存变更；none 需原因。
+-- finalize 生成文件哈希清单并检查必要状态；不会判断科学结论是否正确，也不会自动发现用户未提供的样品变更。
+-
+-分析完成后记录标记为 stale，必须 record 回填后才能 finalize。分析输出必须在实验目录内；建议先 results.add-version 保存版本，再登记该版本路径。不要在完成登记后再移动输入数据。
+-
+-## 从 v1 迁移
+-
+-1. 保留旧实验和样品库备份，替换 skill 代码即可；此版本不自动修改旧项目。
+-2. 旧样品 Markdown 可读，旧历史保留。v1 待提交清单缺快照和确认指纹，不能直接提交；从核实过的实际事件重新生成 v2 清单。
+-3. 不要把已完成的 v1 操作当新 v2 事件重放；v1 没有 event_id，无法可靠自动识别历史对应关系，须先对账。
+-4. 旧实验补录用 start --experiment <原编号>，先把既有内容作为原始输入保存，再建立记录基线。首次接管已有人工记录也会要求确认当前哈希。
+-5. PPT 生成、分析工具安装、已有 Excel 台账导入不包含在这次改动中。
+-
+-## 测试
+-
+-运行 scripts/_test_yamlish.py、scripts/_test_e2e.py、scripts/_test_regressions.py。所有测试使用合成数据；后续应在真实项目副本上进行实验验收。
+-
+-## Obsidian 完成属性
+-
+-实验记录顶部自动维护 status、completed、completed_at，初值为 in_progress、false、null。finalize 通过后同步写 completed、true、实际北京时间；更新记录或任务后撤销完成标记。tags 缺失时添加 experiment，已有标签与其他属性保留。
+-
+-属性更新后同步维护记录哈希，再生成归档清单，避免自动写属性被误判为人工修改。检测到真实人工修改时，仅更新托管状态字段，保留正文及自定义属性，不把人工修改吸收为自动生成基线。
+-
+-status/list 会检查归档后的文件变化并撤销标记；脚本不是 Obsidian 插件，没有实时监听。外部编辑后的标记在下一次运行工作流命令时同步。
++- v2 的 status/completed 表示整体流程状态；v3 的 completed/completed_at 只表示结果整理完成。首次读取旧内部状态时先备份 workflow-v2-backup.json，再按新语义建立任务；不把旧“流程完成”自动当成“结果整理完成”。原文档正文和自定义属性保留，自动 status 字段移除。
++- v3 的项目技能库由 install.py 或首次使用的 --init-only 建立，analysis_skill_repository 默认 skills/analysis。旧 analysis_skills 路径映射不再参与日常路由；按 setup.md 把实际技能安装进项目技能库，更新索引。
++- 库存事件及确认指纹兼容 v2，规则见 inventory-transactions.md。旧 v1 计划缺少事件 ID/快照，不能直接提交；先核对历史，避免重复登记已发生操作。
++- 旧文件可能仍记录绝对路径；迁移机器前保留旧目录或重新登记相应证据。新写入的项目内证据使用相对路径。
++- 普通过程记录不再要求分析任务或 analysis_none；分析未完成可以归档。每次 record 后仍须自动执行当轮库存核查。
+--- a/scripts/_common.py
++++ b/scripts/_common.py
+@@ -321,33 +321,33 @@
+ 
+     # -- 校验
+ 
+-    def validate(self) -> list[str]:
++    def validate(self, scope="record", skill=None) -> list[str]:
+         problems = []
+-        if not self.kb.is_dir():
+-            problems.append(f"知识库不存在：{self.kb}")
+-        if not self.samples.is_dir():
+-            problems.append(f"样本库不存在：{self.samples}")
+-        for tpl in self.cfg.get("method_templates") or []:
+-            if not isinstance(tpl, dict) or not tpl.get("path"):
+-                problems.append(f"方法模板条目缺少 path：{tpl!r}")
+-                continue
+-            if not (self.root / str(tpl["path"])).is_file():
+-                problems.append(f"方法模板文件不存在：{tpl['path']}")
+-        defaults = [t for t in (self.cfg.get("method_templates") or []) if t.get("default")]
+-        if len(defaults) > 1:
+-            problems.append("存在多个 default: true 的方法模板")
+-        ppt = self.cfg.get("ppt_template")
+-        if ppt and not (self.root / str(ppt)).is_file():
+-            problems.append(f"PPT 模板不存在：{ppt}")
+-        for rule in self.cfg.get("analysis_map") or []:
+-            if not isinstance(rule, dict) or not rule.get("skill") or not isinstance(rule.get("match"), dict) or not rule["match"]:
+-                problems.append("analysis_map 条目必须有 skill 和非空 match")
+-                continue
+-            if set(rule["match"]) - {"experiment_type", "data_type"}:
+-                problems.append("analysis_map 使用未知匹配字段")
+-            path = (self.cfg.get("analysis_skills") or {}).get(rule["skill"])
+-            if not path or not (self.root / str(path)).is_file():
+-                problems.append(f"分析 skill 未配置或不可读：{rule['skill']}；配置 analysis_skills")
++        if scope not in ("record", "inventory", "analysis", "report", "all"):
++            return ["未知校验范围"]
++        if scope in ("inventory", "all"):
++            if not self.kb.is_dir(): problems.append(f"知识库不存在：{self.kb}")
++            if not self.samples.is_dir(): problems.append(f"样本库不存在：{self.samples}")
++        if scope in ("record", "all"):
++            templates = self.cfg.get("method_templates") or []
++            for tpl in templates:
++                if not isinstance(tpl, dict) or not tpl.get("path"):
++                    problems.append("方法模板缺少 path")
++                elif not (self.root / str(tpl["path"])).is_file():
++                    problems.append(f"方法模板不存在：{tpl['path']}")
++            if sum(bool(t.get("default")) for t in templates if isinstance(t, dict)) > 1:
++                problems.append("存在多个默认方法模板")
++        if scope in ("report", "all"):
++            ppt = self.cfg.get("ppt_template")
++            if ppt and not (self.root / str(ppt)).is_file(): problems.append(f"PPT 模板不存在：{ppt}")
++        if scope == "analysis" and not skill:
++            problems.append("分析校验需指定 --skill，仅校验目标 skill")
++        if scope in ("analysis", "all"):
++            import skill_store
++            names = [skill] if skill else list(skill_store.read_index(self)["skills"])
++            for name in names:
++                if not skill_store.resolve(self, name)["available"]:
++                    problems.append(f"分析 skill 不可用或索引过期：{name}")
+         return problems
+ 
+     def default_template(self) -> dict | None:
+--- a/scripts/_record_metadata.py
++++ b/scripts/_record_metadata.py
+@@ -56,8 +56,6 @@
+                 values[key] = value
+     custom = ''.join(value if value.endswith('\n') else value+'\n'
+                      for key, value in values.items() if key not in MANAGED)
+-    if 'tags' not in values:
+-        custom += 'tags:\n  - experiment\n'
+     timestamp = json.dumps(completed_at, ensure_ascii=False) if completed_at else 'null'
+-    managed = f'status: {status}\ncompleted: {str(status == "completed").lower()}\ncompleted_at: {timestamp}\n'
++    managed = f'completed: {str(status == "completed").lower()}\ncompleted_at: {timestamp}\n'
+     return '---\n' + managed + prefix + custom + '---\n' + body
+--- a/scripts/_test_regressions.py
++++ b/scripts/_test_regressions.py
+@@ -167,100 +167,16 @@
+         with self.assertRaises(C.SkillError): W.write_record(self.p,self.eid,self.record())
+         self.assertIn('人工补充',target.read_text())
+ 
+-    def test_finalization_requires_closed_workflow(self):
+-        self.start_workflow(); W.write_record(self.p,self.eid,self.record())
+-        with self.assertRaises(C.SkillError): W.finalize(self.p,self.eid)
+-        W.update_analysis(self.p,self.eid,'main','none',reason='仅保存观察记录')
+-        state=W.read_state(self.p,self.eid); state.update(inventory='none',inventory_reason='无样品变化')
+-        W.save_state(self.p,self.eid,state)
+-        self.assertEqual(W.finalize(self.p,self.eid)['status'],'completed')
+-        source=self.root/'more.txt'; source.write_text('补充输入')
+-        W.start(self.p,'request-2',source,self.eid)
+-        with self.assertRaises(C.SkillError): W.finalize(self.p,self.eid)
+-        self.assertFalse((self.p.experiment_dir(self.eid)/'归档清单.json').exists())
+ 
+-    def test_analysis_evidence_and_record_backfill(self):
+-        source=self.start_workflow(); W.write_record(self.p,self.eid,self.record())
+-        output=self.p.experiment_dir(self.eid)/'table.csv'; output.write_text('value\n1\n')
+-        W.update_analysis(self.p,self.eid,'main','completed','synthetic-analysis','1',
+-                          [source],[output],'identity')
+-        self.assertTrue(W.read_state(self.p,self.eid)['record']['stale'])
+-        W.write_record(self.p,self.eid,self.record())
+-        state=W.read_state(self.p,self.eid); state.update(inventory='none',inventory_reason='无')
+-        W.save_state(self.p,self.eid,state)
+-        W.finalize(self.p,self.eid)
+-        output.write_text('changed')
+-        with self.assertRaises(C.SkillError): W.finalize(self.p,self.eid)
+ 
+     def test_reserved_ids_survive_deleted_sample_file(self):
+         sid = self.sample()
+         self.p.sample_path(sid).unlink()
+         self.assertNotEqual(self.sample(), sid)
+ 
+-    def test_full_cli_record_only_lifecycle(self):
+-        script = Path(W.__file__)
+-        source = self.root / 'input.txt'; source.write_text('记录观察，无需分析或库存变更')
+-        def run(*args):
+-            proc = subprocess.run([sys.executable, str(script), '--project', str(self.root), *args],
+-                capture_output=True, text=True)
+-            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+-            return json.loads(proc.stdout)['result']
+-        run('start', '--request-id', 'cli-input', '--input', str(source), '--experiment', self.eid)
+-        run('analysis', '--experiment', self.eid, '--status', 'none', '--reason', '仅记录观察')
+-        run('inventory', '--experiment', self.eid, '--mode', 'none', '--reason', '没有库存变更')
+-        run('record', '--experiment', self.eid, '--file', str(self.record()))
+-        self.assertEqual(run('finalize', '--experiment', self.eid)['status'], 'completed')
+-        self.assertEqual(run('status', '--experiment', self.eid)['status'], 'completed')
+-        (self.p.experiment_dir(self.eid) / 'new.csv').write_text('new data')
+-        self.assertEqual(run('status', '--experiment', self.eid)['status'], 'in_progress')
+ 
+ 
+-    def test_obsidian_properties_lifecycle_and_hashes(self):
+-        self.start_workflow()
+-        draft = self.record()
+-        draft.write_text('---\nproject: 实验项目\ntags: [biology, lab]\nnotes: |\n  line one\n  line two\n---\n' + draft.read_text(), encoding='utf-8')
+-        W.write_record(self.p, self.eid, draft)
+-        target = self.p.experiment_dir(self.eid) / C.RECORD_NAME
+-        front, _ = C.read_md(target)
+-        self.assertEqual(front['status'], 'in_progress')
+-        self.assertFalse(front['completed'])
+-        self.assertIsNone(front['completed_at'])
+-        # A newly generated body without properties retains existing custom fields.
+-        W.write_record(self.p, self.eid, self.record())
+-        self.assertIn('notes: |\n  line one\n  line two', target.read_text())
+-        W.update_analysis(self.p, self.eid, 'main', 'none', reason='仅记录')
+-        state = W.read_state(self.p, self.eid)
+-        state.update(inventory='none', inventory_reason='无库存变化')
+-        W.save_state(self.p, self.eid, state)
+-        manifest = W.finalize(self.p, self.eid)
+-        front, _ = C.read_md(target)
+-        self.assertTrue(front['completed'])
+-        self.assertEqual(front['completed_at'], manifest['completed_at'])
+-        self.assertEqual(front['project'], '实验项目')
+-        self.assertEqual(front['tags'], ['biology', 'lab'])
+-        self.assertEqual(W.read_state(self.p, self.eid)['status'], 'completed')
+-        self.assertEqual(W.read_state(self.p, self.eid)['record']['sha256'], C.sha256_file(target))
+-        source = self.root / 'supplement.txt'; source.write_text('补充')
+-        W.start(self.p, 'supplement', source, self.eid)
+-        front, _ = C.read_md(target)
+-        self.assertFalse(front['completed'])
+-        self.assertIsNone(front['completed_at'])
+-        self.assertEqual(front['status'], 'in_progress')
+ 
+-    def test_obsidian_external_edits_do_not_bypass_manual_guard(self):
+-        self.start_workflow(); W.write_record(self.p, self.eid, self.record())
+-        W.update_analysis(self.p, self.eid, 'main', 'none', reason='仅记录')
+-        state = W.read_state(self.p, self.eid)
+-        state.update(inventory='none', inventory_reason='无库存变化')
+-        W.save_state(self.p, self.eid, state); W.finalize(self.p, self.eid)
+-        target = self.p.experiment_dir(self.eid) / C.RECORD_NAME
+-        target.write_text(target.read_text() + '\n人工追加内容')
+-        W.read_state(self.p, self.eid)
+-        front, _ = C.read_md(target)
+-        self.assertFalse(front['completed'])
+-        self.assertIn('人工追加内容', target.read_text())
+-        with self.assertRaises(C.SkillError):
+-            W.write_record(self.p, self.eid, self.record())
+ 
+ 
+     def test_same_name_result_files_rejected(self):
+--- a/scripts/_test_v3.py
++++ b/scripts/_test_v3.py
+@@ -0,0 +1,226 @@
++"""V3 behavior: scoped loading, local installation, independent archive and completion."""
++import json
++import shutil
++import subprocess
++import sys
++import tempfile
++import unittest
++from pathlib import Path
++from unittest.mock import patch
++import _common as C
++import workflow as W
++import install as Installer
++import skill_store as Store
++
++
++class V3(unittest.TestCase):
++    def setUp(self):
++        self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
++        self.root = Path(self.tmp.name) / 'project'
++        Installer.initialize(self.root, False)
++        self.p = C.Project(self.root)
++        self.eid = '20261101-120000'
++        self.p.experiment_dir(self.eid).mkdir(parents=True)
++        self.source = self.root / 'input.txt'; self.source.write_text('实验实际记录', encoding='utf-8')
++        W.start(self.p, 'request-1', self.source, self.eid)
++
++    def draft(self, date='2026-11-01', result='已有测量表', custom=''):
++        path = self.root / 'draft.md'
++        path.write_text(custom+f'# {self.eid}\n实际日期：{date}\n## 目的\n测量\n## 实验方案\n实际操作\n## 结果\n{result}\n## 附件\n见附件', encoding='utf-8')
++        return path
++
++    def record(self, **kw):
++        return W.write_record(self.p, self.eid, self.draft(**kw))
++
++    def no_stock(self):
++        W.review_inventory(self.p, self.eid, 'none', '本轮无库存变化')
++
++    def result_file(self, name='table.csv'):
++        path = self.p.experiment_dir(self.eid) / name
++        path.write_text('value\n1\n'); return path
++
++    def complete_results(self, task='table', name='table.csv', links=()):
++        path = self.result_file(name)
++        W.organize(self.p, self.eid, task, 'completed', [path], links)
++        return path
++
++    def front(self):
++        return C.read_md(self.p.experiment_dir(self.eid) / C.RECORD_NAME)[0]
++
++    def test_record_only_ignores_analysis_dependencies_and_archives(self):
++        self.p.cfg.update(analysis_map=[{'match': {'data_type': 'csv'}, 'skill': 'missing'}],
++                          ppt_template='missing.pptx')
++        with patch.object(Store, 'read_index', side_effect=AssertionError('must not read index')):
++            self.assertEqual(self.p.validate('record'), [])
++            result = self.record()
++            self.assertEqual(result['next_action'], 'inventory_review')
++            self.assertEqual(W.read_state(self.p,self.eid)['inventory'], 'review_pending')
++            self.no_stock(); self.assertTrue(W.finalize(self.p,self.eid)['archived'])
++        self.assertFalse(self.front()['completed'])
++        self.assertEqual(set(self.front()), {'completed','completed_at'})
++
++    def test_pending_analysis_and_pending_results_do_not_block_archive(self):
++        self.record(); self.no_stock()
++        W.update_analysis(self.p,self.eid,'pending-analysis','blocked',reason='缺少工具')
++        W.organize(self.p,self.eid,'pending-results','pending')
++        self.assertTrue(W.finalize(self.p,self.eid)['archived'])
++        self.assertFalse(self.front()['completed'])
++
++    def test_organizing_existing_results_completes_without_analysis(self):
++        self.record(); self.no_stock()
++        W.update_analysis(self.p,self.eid,'analysis','pending')
++        self.complete_results(links=['analysis'])
++        at=self.front()['completed_at']
++        self.assertTrue(self.front()['completed'])
++        self.assertIsNotNone(at)
++        W.finalize(self.p,self.eid)
++        self.assertEqual(self.front()['completed_at'], at)
++        self.assertEqual(W.read_state(self.p,self.eid)['analysis']['analysis']['status'],'pending')
++
++    def test_unrelated_supplement_keeps_results_and_time(self):
++        self.record(); self.complete_results(); before=self.front()
++        self.source.write_text('更正日期')
++        W.start(self.p,'request-2',self.source,self.eid)
++        self.record(date='2026-10-31')
++        self.assertEqual(self.front(),before)
++        self.assertEqual(W.read_state(self.p,self.eid)['inventory'],'review_pending')
++
++    def test_targeted_invalidation_preserves_other_task(self):
++        self.record(); self.complete_results('a','a.csv'); self.complete_results('b','b.csv')
++        self.source.write_text('更新 A 的输入')
++        W.start(self.p,'update-a',self.source,self.eid,affects_results=['a'])
++        state=W.read_state(self.p,self.eid)
++        self.assertEqual(state['result_tasks']['a']['status'],'pending')
++        self.assertEqual(state['result_tasks']['b']['status'],'completed')
++        self.assertFalse(self.front()['completed']); self.assertIsNone(self.front()['completed_at'])
++
++    def test_result_evidence_changes_invalidate_only_owner(self):
++        self.record(); a=self.complete_results('a','a.csv'); self.complete_results('b','b.csv')
++        a.write_text('changed')
++        state=W.read_state(self.p,self.eid)
++        self.assertEqual(state['result_tasks']['a']['status'],'pending')
++        self.assertEqual(state['result_tasks']['b']['status'],'completed')
++
++    def test_analysis_changes_invalidate_only_linked_organization(self):
++        self.record(); raw=self.result_file('raw.csv'); out=self.result_file('out.csv')
++        W.update_analysis(self.p,self.eid,'calc','completed','test','1',[raw],[out],'v1')
++        self.complete_results('linked','linked.csv',['calc']); self.complete_results('other','other.csv')
++        W.update_analysis(self.p,self.eid,'calc','completed','test','1',[raw],[out],'v2')
++        state=W.read_state(self.p,self.eid)
++        self.assertEqual(state['result_tasks']['linked']['status'],'pending')
++        self.assertEqual(state['result_tasks']['other']['status'],'completed')
++
++    def test_custom_properties_preserved_legacy_status_removed(self):
++        self.record(custom='---\nstatus: in_progress\nproject: biology\ntags: [lab]\n---\n')
++        self.complete_results()
++        self.record(date='2026-10-31')
++        self.assertNotIn('status',self.front())
++        self.assertEqual(self.front()['tags'],['lab'])
++        self.assertEqual(self.front()['project'],'biology')
++        self.assertTrue(self.front()['completed'])
++
++    def test_manual_edit_guard_and_unchanged_result_completion(self):
++        self.record(); self.complete_results(); self.no_stock(); W.finalize(self.p,self.eid)
++        target=self.p.experiment_dir(self.eid)/C.RECORD_NAME
++        target.write_text(target.read_text().replace('实际日期：2026-11-01','实际日期：2026-10-31'))
++        W.read_state(self.p,self.eid)
++        self.assertTrue(self.front()['completed'])
++        with self.assertRaises(C.SkillError): self.record()
++
++    def fake_skill(self, directory, name='csv-analysis'):
++        directory.mkdir(parents=True)
++        (directory/'SKILL.md').write_text(f'---\nname: {name}\ndescription: 整理CSV\nversion: "1"\n---\nRead only when selected.\n')
++        return directory
++
++    def test_install_init_only_and_non_overwrite(self):
++        other=Path(self.tmp.name)/'install-project'
++        Installer.initialize(other)
++        self.assertTrue((other/'skills/experiment-workflow/SKILL.md').is_file())
++        self.assertTrue((other/'skills/analysis/index.json').is_file())
++        before=(other/C.CONFIG_NAME).read_bytes()
++        Installer.initialize(other,False)
++        self.assertEqual((other/C.CONFIG_NAME).read_bytes(),before)
++        with self.assertRaises(C.SkillError): Installer.initialize(other)
++
++    def test_name_lookup_does_not_scan_other_bodies_and_moves_with_project(self):
++        skill=self.fake_skill(Path(self.tmp.name)/'source')
++        Store.install(self.p,skill)
++        other=self.p.root/'skills/analysis/unrelated'; other.mkdir()
++        (other/'SKILL.md').write_text('malformed and intentionally unindexed')
++        with patch.object(Store,'metadata',side_effect=AssertionError('no scan')):
++            self.assertTrue(Store.resolve(self.p,'csv-analysis')['available'])
++            self.assertFalse(Store.resolve(self.p,'unknown')['available'])
++        moved=Path(self.tmp.name)/'moved'; shutil.move(str(self.root),moved)
++        self.assertTrue(Store.resolve(C.Project(moved),'csv-analysis')['available'])
++        entry=json.loads((moved/'skills/analysis/index.json').read_text())['skills']['csv-analysis']
++        self.assertFalse(Path(entry['path']).is_absolute())
++
++    def test_duplicate_names_and_changed_target_require_refresh(self):
++        source=self.fake_skill(Path(self.tmp.name)/'source')
++        Store.install(self.p,source)
++        with self.assertRaises(C.SkillError): Store.install(self.p,source)
++        target=self.root/'skills/analysis/csv-analysis/SKILL.md'
++        target.write_text(target.read_text()+'updated')
++        self.assertFalse(Store.resolve(self.p,'csv-analysis')['available'])
++        Store.refresh(self.p); self.assertTrue(Store.resolve(self.p,'csv-analysis')['available'])
++        self.fake_skill(self.root/'skills/analysis/duplicate')
++        before=(self.root/'skills/analysis/index.json').read_bytes()
++        with self.assertRaises(C.SkillError): Store.refresh(self.p)
++        self.assertEqual((self.root/'skills/analysis/index.json').read_bytes(),before)
++
++    def test_inventory_review_is_retriggered_each_record(self):
++        self.record(); self.no_stock(); W.finalize(self.p,self.eid)
++        self.record(date='2026-10-31')
++        with self.assertRaises(C.SkillError): W.finalize(self.p,self.eid)
++        self.no_stock(); self.assertTrue(W.finalize(self.p,self.eid)['archived'])
++
++    def test_ambiguous_result_edit_needs_scope_without_resetting_all(self):
++        self.record(); self.complete_results('a','a.csv'); self.complete_results('b','b.csv')
++        candidate=self.draft(result='修改 A 的结果')
++        with self.assertRaises(C.SkillError): W.write_record(self.p,self.eid,candidate)
++        self.assertTrue(all(t['status']=='completed' for t in W.read_state(self.p,self.eid)['result_tasks'].values()))
++        W.write_record(self.p,self.eid,candidate,affects_results=['a'])
++        state=W.read_state(self.p,self.eid)
++        self.assertEqual(state['result_tasks']['a']['status'],'pending')
++        self.assertEqual(state['result_tasks']['b']['status'],'completed')
++
++    def test_external_ambiguous_result_edit_keeps_task_history(self):
++        self.record(); self.complete_results('a','a.csv'); self.complete_results('b','b.csv')
++        target=self.p.experiment_dir(self.eid)/C.RECORD_NAME
++        target.write_text(target.read_text().replace('已有测量表','人工更正测量表'))
++        state=W.read_state(self.p,self.eid)
++        self.assertTrue(state['result_scope_unknown'])
++        self.assertTrue(all(t['status']=='completed' for t in state['result_tasks'].values()))
++        self.assertFalse(self.front()['completed'])
++        candidate=self.draft(result='人工更正测量表')
++        W.write_record(self.p,self.eid,candidate,approve_current_hash=C.sha256_file(target),affects_results=['a'])
++        state=W.read_state(self.p,self.eid)
++        self.assertEqual(state['result_tasks']['a']['status'],'pending')
++        self.assertEqual(state['result_tasks']['b']['status'],'completed')
++
++    def test_recursive_install_targets_are_rejected_before_mutation(self):
++        source=Path(self.tmp.name)/'package'
++        (source/'scripts').mkdir(parents=True)
++        with patch.object(Installer,'__file__',str(source/'scripts/install.py')):
++            with self.assertRaises(C.SkillError): Installer.initialize(source)
++        self.assertFalse((source/C.CONFIG_NAME).exists())
++        (self.root/'SKILL.md').write_text('---\nname: project-as-skill\ndescription: test\n---\n')
++        with self.assertRaises(C.SkillError): Store.install(self.p,self.root)
++        self.assertFalse((self.root/'skills/analysis/project-as-skill').exists())
++
++
++    def test_cli_closed_record_round_without_analysis_calls(self):
++        script=Path(W.__file__)
++        def run(*args):
++            proc=subprocess.run([sys.executable,str(script),'--project',str(self.root),*args],capture_output=True,text=True)
++            self.assertEqual(proc.returncode,0,proc.stdout+proc.stderr)
++            return json.loads(proc.stdout)['result']
++        record=run('record','--experiment',self.eid,'--file',str(self.draft()))
++        self.assertEqual(record['next_action'],'inventory_review')
++        run('inventory','--experiment',self.eid,'--mode','none','--reason','无变化')
++        self.assertTrue(run('finalize','--experiment',self.eid)['archived'])
++        self.assertTrue(run('status','--experiment',self.eid)['archived'])
++        self.assertFalse(self.front()['completed'])
++
++
++if __name__=='__main__': unittest.main(verbosity=2)
+--- a/scripts/install.py
++++ b/scripts/install.py
+@@ -0,0 +1,51 @@
++"""安装到明确指定项目；只补缺失配置/目录，不覆盖已有 skill 或配置。"""
++import argparse
++import shutil
++from pathlib import Path
++import _common as C
++import skill_store
++
++
++def initialize(root, copy_skill=True):
++    root = Path(root).resolve()
++    source = Path(__file__).resolve().parent.parent
++    planned = (root / 'skills/experiment-workflow').resolve()
++    if copy_skill and planned != source and planned.is_relative_to(source):
++        raise C.SkillError('目标位于源 skill 内，拒绝递归安装；请选择项目根目录')
++    root.mkdir(parents=True, exist_ok=True)
++    with C.FileLock(root / C.STATE_DIR / 'install.lock'):
++        target = root / 'skills/experiment-workflow'
++        source = Path(__file__).resolve().parent.parent
++        if copy_skill and target.resolve() != source and target.exists():
++            raise C.SkillError('主 skill 目录已存在，拒绝覆盖；仅补齐目录用 --init-only')
++        cfg_path = root / C.CONFIG_NAME
++        if not cfg_path.exists():
++            cfg = {'version': 3, 'project': root.name, 'knowledge_base': '.',
++                   'sample_library': 'samples', 'method_templates': [], 'ppt_template': None,
++                   'analysis_skill_repository': 'skills/analysis', 'analysis_map': [],
++                   'units': {'convert': [['uL', 'mL'], ['mg', 'g']]}}
++            C.atomic_write_text(cfg_path, C._yamlish.dumps(cfg))
++        p = C.Project(root)
++        # Only provision project-owned paths. Existing external vaults remain untouched.
++        for folder in (p.kb, p.samples):
++            if folder.is_relative_to(root):
++                folder.mkdir(parents=True, exist_ok=True)
++        repo = skill_store.ensure(p)
++        if copy_skill and target.resolve() != source:
++            shutil.copytree(source, target, ignore=shutil.ignore_patterns('__pycache__', '.git'))
++        return {'project': str(root), 'skill': str(target),
++                'analysis_skill_repository': repo.relative_to(root).as_posix()}
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--project', required=True)
++    parser.add_argument('--init-only', action='store_true')
++    args = parser.parse_args()
++    try:
++        C.ok(**initialize(args.project, not args.init_only))
++    except (C.SkillError, OSError, ValueError, TypeError, KeyError) as exc:
++        C.die(str(exc), code='install_error')
++
++
++if __name__ == '__main__': main()
+--- a/scripts/project.py
++++ b/scripts/project.py
+@@ -9,6 +9,7 @@
+ from pathlib import Path
+ 
+ import _common as C
++import skill_store
+ 
+ 
+ def summary(project: C.Project) -> dict:
+@@ -61,13 +62,7 @@
+             "message": "命中多个分析 skill，需向用户确认使用哪一个。",
+         }
+     skill = hits[0]["skill"]
+-    configured = (project.cfg.get("analysis_skills") or {}).get(skill)
+-    path = (project.root / str(configured)).resolve() if configured else None
+-    return {"skill": skill, "match": hits[0]["match"],
+-            "available": bool(path and path.is_file()),
+-            "skill_path": str(path) if path else None,
+-            "message": "读取 skill_path 并遵循其要求执行分析" if path and path.is_file()
+-                       else "已匹配但未配置可读 SKILL.md；分析任务保持 blocked"}
++    return {**skill_store.resolve(project, skill), "match": hits[0]["match"]}
+ 
+ 
+ def main() -> None:
+@@ -80,6 +75,9 @@
+     for name, helptext in (("show", "输出配置摘要"), ("validate", "校验配置与目录")):
+         p = sub.add_parser(name, help=helptext)
+         p.add_argument("--project", default=None)
++        if name == "validate":
++            p.add_argument("--scope", choices=["record", "inventory", "analysis", "report", "all"], default="record")
++            p.add_argument("--skill")
+ 
+     p_tpl = sub.add_parser("template", help="取方法模板")
+     p_tpl.add_argument("--project", default=None)
+@@ -102,7 +100,7 @@
+         if args.cmd == "show":
+             C.ok(**summary(project))
+         elif args.cmd == "validate":
+-            problems = project.validate()
++            problems = project.validate(args.scope, args.skill)
+             if problems:
+                 C.die("配置校验失败", code="invalid_config", problems=problems, ok_to_run=False)
+             C.ok(problems=problems, ok_to_run=not problems,
+--- a/scripts/skill_store.py
++++ b/scripts/skill_store.py
+@@ -0,0 +1,140 @@
++"""项目内技能索引：仅安装/刷新时读取元信息，resolve 不扫描其他正文。"""
++from __future__ import annotations
++import argparse
++import json
++import re
++import shutil
++from pathlib import Path
++import _common as C
++
++
++def inside(root, relative):
++    path = Path(relative)
++    if path.is_absolute() or not path.parts or '..' in path.parts:
++        raise C.SkillError('技能库路径必须是项目内相对路径')
++    target = (root / path).resolve()
++    if not target.is_relative_to(root.resolve()):
++        raise C.SkillError('技能库路径超出项目')
++    return target
++
++
++def repository(project):
++    return inside(project.root, project.cfg.get('analysis_skill_repository', 'skills/analysis'))
++
++
++def ensure(project):
++    repo = repository(project)
++    repo.mkdir(parents=True, exist_ok=True)
++    with C.FileLock(repo / '.index.lock'):
++        index = repo / 'index.json'
++        if not index.exists():
++            C.atomic_write_text(index, C.json_text({'version': 1, 'skills': {}}))
++    return repo
++
++
++def read_index(project):
++    path = repository(project) / 'index.json'
++    if not path.is_file():
++        return {'version': 1, 'skills': {}}
++    data = json.loads(path.read_text(encoding='utf-8'))
++    if not isinstance(data.get('skills'), dict):
++        raise C.SkillError('技能索引结构不正确')
++    return data
++
++
++def metadata(directory, root):
++    path = directory / 'SKILL.md'
++    if not path.is_file():
++        raise C.SkillError(f'缺少 SKILL.md：{directory}')
++    # Stop at frontmatter; do not read the instructions into the routing context.
++    with path.open(encoding='utf-8-sig') as stream:
++        if stream.readline().strip() != '---':
++            raise C.SkillError('SKILL.md 缺少 frontmatter')
++        header = []
++        for line in stream:
++            if line.strip() == '---':
++                break
++            header.append(line)
++        else:
++            raise C.SkillError('SKILL.md frontmatter 未闭合')
++    front = C._yamlish.loads(''.join(header))
++    name = front.get('name')
++    if not isinstance(name, str) or not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', name):
++        raise C.SkillError('skill name 须使用小写字母、数字和连字符')
++    if not front.get('description'):
++        raise C.SkillError('skill 缺少 description')
++    return {'name': name, 'description': front['description'],
++            'input_types': front.get('input_types') or [], 'version': str(front.get('version') or 'unspecified'),
++            'path': path.relative_to(root).as_posix(), 'sha256': C.sha256_file(path)}
++
++
++def resolve(project, name):
++    entry = read_index(project)['skills'].get(name)
++    if not entry:
++        return {'skill': name, 'available': False, 'message': '索引中无此名称；保留记录并提示缺少 skill，不扫描其他正文'}
++    path = inside(project.root, entry['path'])
++    if not path.is_relative_to(repository(project)):
++        raise C.SkillError('索引条目不在项目分析技能库内')
++    available = path.is_file() and C.sha256_file(path) == entry['sha256']
++    return {'skill': name, 'available': available, 'skill_path': str(path), 'metadata': entry,
++            'message': '只读取该 SKILL.md 并核查其工具要求' if available else '目标缺失或已变化；请刷新索引'}
++
++
++def refresh(project):
++    repo = ensure(project)
++    with C.FileLock(repo / '.index.lock'):
++        entries = {}
++        for directory in sorted(repo.iterdir()):
++            if directory.is_dir() and not directory.name.startswith('.'):
++                if directory.is_symlink():
++                    raise C.SkillError('技能库不接受符号链接目录')
++                entry = metadata(directory, project.root)
++                if entry['name'] in entries:
++                    raise C.SkillError(f"同名 skill 冲突：{entry['name']}")
++                entries[entry['name']] = entry
++        C.atomic_write_text(repo / 'index.json', C.json_text({'version': 1, 'skills': entries}))
++    return {'count': len(entries)}
++
++
++def install(project, source):
++    source = Path(source).resolve()
++    if any(f.is_symlink() for f in source.rglob('*')):
++        raise C.SkillError('安装目录不接受符号链接')
++    entry = metadata(source, source.parent)
++    planned = repository(project) / entry['name']
++    if planned.resolve().is_relative_to(source):
++        raise C.SkillError('目标位于源 skill 内，拒绝递归安装')
++    repo = ensure(project)
++    with C.FileLock(repo / '.index.lock'):
++        data = read_index(project)
++        dest = repo / entry['name']
++        if dest.exists() or entry['name'] in data['skills']:
++            raise C.SkillError('同名 skill 已存在，不自动覆盖；明确编辑后使用 refresh 更新索引')
++        shutil.copytree(source, dest, ignore=shutil.ignore_patterns('__pycache__', '.git'))
++        entry = metadata(dest, project.root)
++        data['skills'][entry['name']] = entry
++        C.atomic_write_text(repo / 'index.json', C.json_text(data))
++    return entry
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--project')
++    sub = parser.add_subparsers(dest='cmd', required=True)
++    sub.add_parser('init'); sub.add_parser('refresh'); sub.add_parser('list')
++    sub.add_parser('resolve').add_argument('--name', required=True)
++    sub.add_parser('install').add_argument('--source', required=True)
++    args = parser.parse_args()
++    try:
++        p = C.Project(C.find_project_root(args.project))
++        if args.cmd == 'init': result = {'repository': str(ensure(p))}
++        elif args.cmd == 'resolve': result = resolve(p, args.name)
++        elif args.cmd == 'install': result = install(p, args.source)
++        elif args.cmd == 'refresh': result = refresh(p)
++        else: result = read_index(p)
++        C.ok(**result)
++    except (C.SkillError, OSError, ValueError, TypeError, KeyError) as exc:
++        C.die(str(exc), code='skill_store_error')
++
++
++if __name__ == '__main__': main()
+--- a/scripts/workflow.py
++++ b/scripts/workflow.py
+@@ -1,4 +1,4 @@
+-"""持久化输入、实验记录、分析任务、库存要求和最终归档检查。"""
++"""按任务独立记录、整理结果、分析、库存复核与归档。"""
+ from __future__ import annotations
+ import argparse
+ import json
+@@ -6,7 +6,6 @@
+ from pathlib import Path
+ import _common as C
+ import allocate_id
+-import inventory
+ import _record_metadata as metadata
+ 
+ 
+@@ -14,54 +13,76 @@
+     return p.experiment_dir(eid) / C.STATE_DIR / 'workflow.json'
+ 
+ 
+-def sync_record_properties(p, eid, state, status, completed_at=None):
++def local_path(p, value):
++    path = Path(value)
++    return path if path.is_absolute() else p.root / path
++
++
++def stored_path(p, value):
++    path = Path(value).resolve()
++    return path.relative_to(p.root).as_posix() if path.is_relative_to(p.root) else str(path)
++
++
++def snapshot_files(paths, project=None):
++    out = []
++    for raw in paths:
++        path = Path(raw).resolve()
++        if not path.is_file(): raise C.SkillError(f'文件不存在：{path}')
++        out.append({'path': stored_path(project, path) if project else str(path), 'sha256': C.sha256_file(path)})
++    return out
++
++
++def changed(p, entry):
++    path = local_path(p, entry['path'])
++    return not path.is_file() or C.sha256_file(path) != entry['sha256']
++
++
++def result_section(text):
++    body = metadata.split(text)[1]
++    found = re.search(r'^## 结果\s*\n(.*?)(?=^## |\Z)', body, re.M | re.S)
++    return (found.group(1) if found else '').strip()
++
++
++def invalidate_results(state, task_ids):
++    for task_id in task_ids:
++        if task_id not in state['result_tasks']:
++            raise C.SkillError(f'未知结果整理任务：{task_id}')
++        state['result_tasks'][task_id].update(status='pending', completed_at=None)
++
++
++def properties(state):
++    tasks = list(state['result_tasks'].values())
++    completed = bool(tasks) and not state.get('result_scope_unknown') and all(t['status'] == 'completed' for t in tasks)
++    return ('completed' if completed else 'in_progress',
++            max(t['completed_at'] for t in tasks) if completed else None)
++
++
++def sync_record_properties(p, eid, state):
+     target = p.experiment_dir(eid) / C.RECORD_NAME
+     record = state.get('record')
+-    if not record or not target.is_file():
+-        return
++    if not record or not target.is_file(): return
+     before = C.sha256_file(target)
+     text = target.read_text(encoding='utf-8')
+-    updated = metadata.render(text, status, completed_at)
+-    if updated != text:
+-        C.atomic_write_text(target, updated)
+-    # Never adopt unrelated manual edits as the generated baseline.
++    status, at = properties(state)
++    updated = metadata.render(text, status, at)
++    if updated != text: C.atomic_write_text(target, updated)
+     if before == record.get('sha256'):
+         record['sha256'] = C.sha256_file(target)
+     else:
+-        record['stale'] = True
+-
+-
+-def read_state(p, eid):
+-    path = state_path(p, eid)
+-    if not path.is_file():
+-        raise C.SkillError('请先 workflow.py start 保存原始输入')
+-    state = json.loads(path.read_text(encoding='utf-8'))
+-    if state.get('status') == 'completed':
+-        manifest_path = p.experiment_dir(eid) / '归档清单.json'
+-        changed = not manifest_path.is_file()
+-        if not changed:
+-            manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+-            files = manifest['files']
+-            changed = any(not Path(f['path']).is_file() or C.sha256_file(Path(f['path'])) != f['sha256'] for f in files)
+-            expected = {f['path'] for f in files}
+-            actual = {str(f.resolve()) for f in archive_files(p.experiment_dir(eid))}
+-            changed = changed or actual != expected
+-        if changed:
+-            state['status'] = 'in_progress'
+-            state['archive_invalidated'] = '归档后文件变化，需回填记录并重新归档'
+-            if state.get('record'):
+-                state['record']['stale'] = True
+-            sync_record_properties(p, eid, state, 'in_progress')
+-            C.atomic_write_text(path, C.json_text(state))
+-    return state
++        record['stale'] = True  # never adopt unrelated manual edits as a generated baseline
++
++
++def archive_files(base):
++    return [f for f in base.rglob('*') if f.is_file()
++            and C.STATE_DIR not in f.relative_to(base).parts and f.name != '归档清单.json']
+ 
+ 
+ def save_state(p, eid, state):
+     state['updated'] = C.ts_now()
+-    state['status'] = 'in_progress'
+-    sync_record_properties(p, eid, state, 'in_progress')
++    state['archived'] = False
++    state['archived_at'] = None
++    sync_record_properties(p, eid, state)
+     C.atomic_write_text(state_path(p, eid), C.json_text(state))
+-    # A new revision invalidates the prior finalization; retain it as history.
+     manifest = p.experiment_dir(eid) / '归档清单.json'
+     if manifest.is_file():
+         dest = p.experiment_dir(eid) / C.STATE_DIR / 'archive-history' / (C.sha256_file(manifest)+'.json')
+@@ -69,19 +90,59 @@
+         manifest.unlink()
+ 
+ 
+-def snapshot_files(paths):
+-    out = []
+-    for raw in paths:
+-        path = Path(raw).resolve()
+-        if not path.is_file():
+-            raise C.SkillError(f'文件不存在：{path}')
+-        out.append({'path': str(path), 'sha256': C.sha256_file(path)})
+-    return out
+-
+-
+-def start(p, request_id, input_file, eid=None):
+-    if not request_id.strip():
+-        raise C.SkillError('request-id 不能为空；重试必须沿用同一个 ID')
++def read_state(p, eid):
++    path = state_path(p, eid)
++    if not path.is_file(): raise C.SkillError('请先 start 保存原始输入')
++    state = json.loads(path.read_text(encoding='utf-8'))
++    migrated = state.get('version') != 3
++    if migrated:
++        # v2 completed meant workflow completion, not results organization.
++        C.atomic_write_text(path.with_name('workflow-v2-backup.json'), C.json_text(state))
++        state.update(version=3, archived=False, archived_at=None, result_tasks={}, record_round=0)
++        state.pop('status', None)
++    state.setdefault('result_tasks', {})
++    state.setdefault('record_round', 0)
++    dirty = migrated
++    target = p.experiment_dir(eid) / C.RECORD_NAME
++    record = state.get('record')
++    if record and target.is_file():
++        section_hash = C.sha256_text(result_section(target.read_text(encoding='utf-8')))
++        if record.get('results_hash') and section_hash != record['results_hash']:
++            if len(state['result_tasks']) == 1:
++                invalidate_results(state, list(state['result_tasks']))
++            elif state['result_tasks']:
++                state['result_scope_unknown'] = True
++            dirty = True
++        if C.sha256_file(target) != record.get('sha256'):
++            record['stale'] = True
++    for task_id, task in state.get('analysis', {}).items():
++        if task['status'] == 'completed' and any(changed(p, e) for e in task['inputs'] + task['outputs']):
++            task['status'] = 'pending'
++            invalidate_results(state, [key for key, value in state['result_tasks'].items()
++                                       if task_id in value.get('analysis_tasks', [])])
++            dirty = True
++    for task in state['result_tasks'].values():
++        if task['status'] == 'completed' and any(changed(p, e) for e in task.get('files', [])):
++            task.update(status='pending', completed_at=None)
++            dirty = True
++    if state.get('archived'):
++        manifest_path = p.experiment_dir(eid) / '归档清单.json'
++        archive_changed = not manifest_path.is_file()
++        if not archive_changed:
++            manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
++            archive_changed = any(changed(p, e) for e in manifest['files'])
++            expected = {str(local_path(p, e['path']).resolve()) for e in manifest['files']}
++            actual = {str(f.resolve()) for f in archive_files(p.experiment_dir(eid))}
++            archive_changed |= expected != actual
++        if archive_changed:
++            state['archive_invalidated'] = '归档后材料变化，需重新归档'
++            dirty = True
++    if dirty: save_state(p, eid, state)
++    return state
++
++
++def start(p, request_id, input_file, eid=None, affects_results=(), affects_analysis=()):
++    if not request_id.strip(): raise C.SkillError('request-id 不能为空；重试沿用原 ID')
+     text = Path(input_file).read_text(encoding='utf-8')
+     digest = C.sha256_text(text)
+     registry = p.state / 'requests.json'
+@@ -89,200 +150,220 @@
+     if request_id in known:
+         entry = known[request_id]
+         if entry['sha256'] != digest or (eid and eid != entry['experiment']):
+-            raise C.SkillError('request-id 已使用但内容或实验不同；补充输入使用新 request-id')
++            raise C.SkillError('request-id 已存在但内容或实验不同')
+         eid = entry['experiment']
+     else:
+         eid = eid or allocate_id.allocate_experiment(p)
+-        if not p.experiment_dir(eid).is_dir():
+-            raise C.SkillError('补充实验不存在')
+-        known[request_id] = {'experiment': eid, 'sha256': digest}
+-        C.atomic_write_text(registry, C.json_text(known))
++        if not p.experiment_dir(eid).is_dir(): raise C.SkillError('补充实验不存在')
+     state = read_state(p, eid) if state_path(p, eid).is_file() else {
+-        'experiment': eid, 'inputs': [], 'record': None, 'analysis': {},
+-        'analysis_none': None, 'inventory': 'unknown', 'inventory_reason': None,
+-        'issues': [], 'status': 'in_progress'}
++        'version': 3, 'experiment': eid, 'inputs': [], 'record': None,
++        'analysis': {}, 'result_tasks': {}, 'inventory': 'unknown', 'inventory_reason': None,
++        'issues': [], 'archived': False, 'archived_at': None, 'record_round': 0}
+     if any(i['request_id'] == request_id for i in state['inputs']):
+         return {'experiment': eid, 'noop': True, 'state': state}
++    invalidate_results(state, affects_results)
++    for task_id in affects_analysis:
++        if task_id not in state['analysis']: raise C.SkillError(f'未知分析任务：{task_id}')
++        state['analysis'][task_id]['status'] = 'pending'
++        invalidate_results(state, [key for key, task in state['result_tasks'].items()
++                                   if task_id in task.get('analysis_tasks', [])])
++    known[request_id] = {'experiment': eid, 'sha256': digest}
++    C.atomic_write_text(registry, C.json_text(known))
+     target = p.experiment_dir(eid) / '原始输入' / (C.sha256_text(request_id)+'.txt')
+     C.atomic_write_text(target, text)
+-    state['inputs'].append({'request_id': request_id, 'path': str(target), 'sha256': digest})
+-    if state['record']:
+-        state['record']['stale'] = True
+-    for task in state['analysis'].values():
+-        task['status'] = 'pending'
+-    state['analysis_none'] = None
+-    state['inventory'] = 'unknown'
++    state['inputs'].append({'request_id': request_id, 'path': stored_path(p, target), 'sha256': digest})
++    if state['record']: state['record']['stale'] = True
+     save_state(p, eid, state)
+     return {'experiment': eid, 'state': state}
+ 
+ 
+-def write_record(p, eid, source, approve_current_hash=None):
++def write_record(p, eid, source, approve_current_hash=None, affects_results=None):
+     state = read_state(p, eid)
+     text = Path(source).read_text(encoding='utf-8')
+     for heading in ('## 目的', '## 实验方案', '## 结果', '## 附件'):
+-        if heading not in text:
+-            raise C.SkillError(f'记录缺少 {heading}')
++        if heading not in text: raise C.SkillError(f'记录缺少 {heading}')
+     if eid not in text or '{{' in text or re.search(r'\bTODO\b', text, re.I):
+-        raise C.SkillError('记录编号不一致或仍有模板占位符/TODO')
++        raise C.SkillError('编号不一致或仍有模板占位符/TODO')
+     target = p.experiment_dir(eid) / C.RECORD_NAME
+     previous = state.get('record') or {}
+     if target.exists() and C.sha256_file(target) != previous.get('sha256'):
+         current = C.sha256_file(target)
+         if approve_current_hash != current:
+-            raise C.SkillError(f'记录有人工修改；展示差异并确认合并后传 --approve-current-hash {current}')
+-    if target.is_file():
++            raise C.SkillError(f'记录有人工修改；展示合并结果并确认后传 --approve-current-hash {current}')
++    old = target.read_text(encoding='utf-8') if target.is_file() else None
++    if affects_results is not None:
++        invalidate_results(state, affects_results)
++        state.pop('result_scope_unknown', None)
++    elif state.get('result_scope_unknown') or (old is not None and result_section(text) != result_section(old)):
++        if len(state['result_tasks']) > 1:
++            raise C.SkillError('结果章节变化但无法确定任务范围；核对后传 --affects-results <受影响任务ID>，不重置全部任务')
++        invalidate_results(state, list(state['result_tasks']))
++    if old is not None:
+         backup = p.experiment_dir(eid) / C.STATE_DIR / 'record-history' / (C.sha256_file(target)+'.md')
+-        C.atomic_write_text(backup, target.read_text(encoding='utf-8'))
+-    previous_text = target.read_text(encoding='utf-8') if target.is_file() else None
+-    text = metadata.render(text, 'in_progress', previous=previous_text)
++        C.atomic_write_text(backup, old)
++    status, at = properties(state)
++    text = metadata.render(text, status, at, previous=old)
+     C.atomic_write_text(target, text)
+-    state['record'] = {'path': str(target), 'sha256': C.sha256_file(target), 'stale': False}
+-    save_state(p, eid, state)
+-    return state['record']
++    state['record'] = {'path': stored_path(p, target), 'sha256': C.sha256_file(target), 'stale': False,
++                       'results_hash': C.sha256_text(result_section(text))}
++    state['record_round'] += 1
++    state.update(inventory='review_pending', inventory_reason=None)
++    save_state(p, eid, state)
++    return {**state['record'], 'record_round': state['record_round'],
++            'next_action': 'inventory_review', 'message': '自动读取库存模块，核查本轮样品变化；无变化直接结束，不询问是否手动管理库存'}
+ 
+ 
+ def update_analysis(p, eid, task_id, status, skill=None, skill_version=None,
+                     inputs=(), outputs=(), params='', reason=None):
+     state = read_state(p, eid)
+     if status == 'none':
+-        if not reason or state['analysis']:
+-            raise C.SkillError('无分析需求须提供 reason，且不能已有分析任务')
++        if not reason or state['analysis']: raise C.SkillError('无需分析须给原因且没有已有分析任务')
+         state['analysis_none'] = reason
+     else:
+         if status == 'completed' and (not skill or not skill_version or not inputs or not outputs):
+-            raise C.SkillError('完成分析须提供 skill、skill-version、inputs、outputs')
+-        if status == 'blocked' and not reason:
+-            raise C.SkillError('blocked 须记录原因')
+-        if status == 'completed':
+-            for raw in outputs:
+-                if not Path(raw).resolve().is_relative_to(p.experiment_dir(eid).resolve()):
+-                    raise C.SkillError('分析输出必须先保存到本实验目录（建议 results.py）')
+-        state['analysis'][task_id] = {'status': status, 'skill': skill, 'skill_version': skill_version,
+-            'inputs': snapshot_files(inputs), 'outputs': snapshot_files(outputs),
+-            'params': params, 'reason': reason}
+-        state['analysis_none'] = None
+-        if state.get('record'):
+-            state['record']['stale'] = True
++            raise C.SkillError('分析完成须有 skill、版本、输入、输出')
++        if status == 'blocked' and not reason: raise C.SkillError('blocked 须记录原因')
++        if status == 'completed' and any(not Path(f).resolve().is_relative_to(p.experiment_dir(eid)) for f in outputs):
++            raise C.SkillError('分析输出必须先归入本实验目录')
++        task = {'status': status, 'skill': skill, 'skill_version': skill_version,
++                'inputs': snapshot_files(inputs, p), 'outputs': snapshot_files(outputs, p),
++                'params': params, 'reason': reason}
++        old = state['analysis'].get(task_id)
++        if old and any(task[k] != old.get(k) for k in ('inputs', 'outputs', 'params', 'skill', 'skill_version')):
++            invalidate_results(state, [key for key, value in state['result_tasks'].items()
++                                       if task_id in value.get('analysis_tasks', [])])
++        state['analysis'][task_id] = task
+     save_state(p, eid, state)
+     return state
+ 
+ 
+-def archive_files(base):
+-    return [f for f in base.rglob('*') if f.is_file()
+-            and C.STATE_DIR not in f.relative_to(base).parts
+-            and f.name != '归档清单.json']
+-
+-
+-@C.locked_results
+-@C.locked_stock
++def organize(p, eid, task_id, status, files=(), analysis_tasks=()):
++    state = read_state(p, eid)
++    if not task_id.strip(): raise C.SkillError('整理任务 ID 不能为空')
++    if any(key not in state['analysis'] for key in analysis_tasks):
++        raise C.SkillError('关联的分析任务不存在')
++    if status == 'completed':
++        record = state.get('record')
++        if not record or record.get('stale') or changed(p, record):
++            raise C.SkillError('先将已有结果回填记录再标记整理完成')
++        if not files: raise C.SkillError('结果整理完成须提供已整理的结果文件')
++        if any(not Path(f).resolve().is_relative_to(p.experiment_dir(eid)) for f in files):
++            raise C.SkillError('结果文件须归入本实验目录')
++    state['result_tasks'][task_id] = {'status': status, 'files': snapshot_files(files, p),
++        'analysis_tasks': list(analysis_tasks),
++        'completed_at': C.now_cn().strftime('%Y-%m-%dT%H:%M:%S') if status == 'completed' else None}
++    save_state(p, eid, state)
++    return state
++
++
++def review_inventory(p, eid, mode, reason=None):
++    state = read_state(p, eid)
++    if mode == 'none' and not reason: raise C.SkillError('无库存变化需记录核查依据，不必询问用户')
++    state.update(inventory=mode, inventory_reason=reason, inventory_review_round=state['record_round'])
++    if mode == 'required':
++        from inventory import plan_path
++        path = plan_path(p, eid)
++        # Prevent accepting a previous round's receipt as this round's new operations.
++        state['inventory_previous_plan'] = C.sha256_file(path) if path.is_file() else None
++    save_state(p, eid, state)
++    return state
++
++
+ def finalize(p, eid):
++    # No analysis or result-completion gate. Inventory checks are only used when requested.
++    state = read_state(p, eid)
++    if state['inventory'] == 'required':
++        with C.StockLock(p):
++            return _finalize(p, eid)
++    return _finalize(p, eid)
++
++
++def _finalize(p, eid):
+     with C.FileLock(p.experiment_dir(eid) / C.STATE_DIR / 'archive.lock'):
+-        return _finalize(p, eid)
+-
+-
+-def _finalize(p, eid):
+-    state = read_state(p, eid)
+-    problems = []
+-    record = state.get('record')
+-    if not record or record.get('stale'):
+-        problems.append('实验记录缺失或尚未回填最新输入/分析结果')
+-    if state['issues']:
+-        problems.append('存在未解决事项')
+-    if not state['analysis'] and not state.get('analysis_none'):
+-        problems.append('尚未判断分析需求')
+-    for task_id, task in state['analysis'].items():
+-        if task['status'] != 'completed':
+-            problems.append(f'分析任务 {task_id} 尚未完成')
+-    if state['inventory'] == 'required':
+-        path = inventory.plan_path(p, eid)
+-        plan = C._yamlish.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
+-        if plan.get('status') != 'committed':
+-            problems.append('库存尚未提交')
+-    elif state['inventory'] != 'none':
+-        problems.append('尚未判断库存变更需求')
+-    files = list(state['inputs']) + ([record] if record else [])
+-    for task in state['analysis'].values():
+-        files += task['inputs'] + task['outputs']
+-    for entry in files:
+-        path = Path(entry['path'])
+-        if not path.is_file() or C.sha256_file(path) != entry['sha256']:
+-            problems.append(f'文件丢失或内容已变化：{path}')
+-    if problems:
+-        raise C.SkillError('；'.join(problems))
+-    base = p.experiment_dir(eid)
+-    completed_at = C.now_cn().strftime('%Y-%m-%dT%H:%M:%S')
+-    sync_record_properties(p, eid, state, 'completed', completed_at)
+-    manifest = {'experiment': eid, 'completed_at': completed_at, 'status': 'completed',
+-                'files': snapshot_files(archive_files(base)),
+-                'analysis': state['analysis'], 'inventory': state['inventory']}
+-    C.atomic_write_text(base / '归档清单.json', C.json_text(manifest))
+-    state['status'] = 'completed'
+-    C.atomic_write_text(state_path(p, eid), C.json_text(state))
+-    return manifest
++        state = read_state(p, eid)
++        problems = []
++        record = state.get('record')
++        if not record or record.get('stale'): problems.append('先完成本轮记录写入')
++        if state['inventory'] == 'required':
++            from inventory import plan_path
++            path = plan_path(p, eid)
++            plan = C._yamlish.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
++            if plan.get('status') != 'committed': problems.append('库存尚未提交')
++            elif C.sha256_file(path) == state.get('inventory_previous_plan'):
++                problems.append('当前仍是上一轮库存计划，请生成本轮计划')
++        elif state['inventory'] != 'none': problems.append('记录完成后需自动执行本轮库存核查')
++        # Analysis problems remain internal and do not prevent archiving available material.
++        for entry in list(state['inputs']) + ([record] if record else []):
++            if changed(p, entry): problems.append(f"原始输入或记录变化：{entry['path']}")
++        if problems: raise C.SkillError('；'.join(problems))
++        at = C.now_cn().strftime('%Y-%m-%dT%H:%M:%S')
++        manifest = {'experiment': eid, 'archived_at': at, 'archived': True,
++                    'files': snapshot_files(archive_files(p.experiment_dir(eid)), p),
++                    'analysis': state['analysis'], 'result_tasks': state['result_tasks'],
++                    'inventory': state['inventory'], 'issues': state['issues']}
++        C.atomic_write_text(p.experiment_dir(eid) / '归档清单.json', C.json_text(manifest))
++        state.update(archived=True, archived_at=at)
++        C.atomic_write_text(state_path(p, eid), C.json_text(state))
++        return manifest
+ 
+ 
+ def main():
+     parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument('--project')
+     sub = parser.add_subparsers(dest='cmd', required=True)
+-    start_p = sub.add_parser('start')
+-    start_p.add_argument('--request-id', required=True)
+-    start_p.add_argument('--input', required=True)
+-    start_p.add_argument('--experiment')
++    arg = sub.add_parser('start')
++    arg.add_argument('--request-id', required=True); arg.add_argument('--input', required=True)
++    arg.add_argument('--experiment')
++    arg.add_argument('--affects-results', nargs='*', default=[])
++    arg.add_argument('--affects-analysis', nargs='*', default=[])
+     sub.add_parser('list')
+-    for name in ('status', 'record', 'analysis', 'inventory', 'issues', 'finalize'):
+-        arg = sub.add_parser(name)
+-        arg.add_argument('--experiment', required=True)
++    for name in ('status', 'record', 'analysis', 'organize', 'inventory', 'issues', 'finalize'):
++        arg = sub.add_parser(name); arg.add_argument('--experiment', required=True)
+         if name == 'record':
+-            arg.add_argument('--file', required=True)
+-            arg.add_argument('--approve-current-hash')
++            arg.add_argument('--file', required=True); arg.add_argument('--approve-current-hash')
++            arg.add_argument('--affects-results', nargs='+')
+         elif name == 'analysis':
+             arg.add_argument('--task', default='main')
+             arg.add_argument('--status', choices=['pending', 'blocked', 'completed', 'none'], required=True)
+             arg.add_argument('--skill'); arg.add_argument('--skill-version')
+-            arg.add_argument('--inputs', nargs='*', default=[])
+-            arg.add_argument('--outputs', nargs='*', default=[])
++            arg.add_argument('--inputs', nargs='*', default=[]); arg.add_argument('--outputs', nargs='*', default=[])
+             arg.add_argument('--params', default=''); arg.add_argument('--reason')
++        elif name == 'organize':
++            arg.add_argument('--task', required=True)
++            arg.add_argument('--status', choices=['pending', 'completed'], required=True)
++            arg.add_argument('--files', nargs='*', default=[])
++            arg.add_argument('--analysis-tasks', nargs='*', default=[])
+         elif name == 'inventory':
+-            arg.add_argument('--mode', choices=['required', 'none'], required=True)
+-            arg.add_argument('--reason')
+-        elif name == 'issues':
+-            arg.add_argument('--file', required=True)
++            arg.add_argument('--mode', choices=['required', 'none'], required=True); arg.add_argument('--reason')
++        elif name == 'issues': arg.add_argument('--file', required=True)
+     args = parser.parse_args()
+     try:
+         p = C.Project(C.find_project_root(args.project))
+         with C.FileLock(p.state / 'workflow.lock'):
+             if args.cmd == 'start':
+-                result = start(p, args.request_id, args.input, args.experiment)
++                result = start(p, args.request_id, args.input, args.experiment, args.affects_results, args.affects_analysis)
+             elif args.cmd == 'list':
+                 result = {'experiments': [read_state(p, f.parent.parent.name)
+                     for f in sorted(p.experiments.glob('*/.experiment-workflow/workflow.json'))]}
+-            elif args.cmd == 'status':
+-                result = read_state(p, args.experiment)
++            elif args.cmd == 'status': result = read_state(p, args.experiment)
+             elif args.cmd == 'record':
+-                result = write_record(p, args.experiment, args.file, args.approve_current_hash)
++                result = write_record(p, args.experiment, args.file, args.approve_current_hash, args.affects_results)
+             elif args.cmd == 'analysis':
+                 result = update_analysis(p, args.experiment, args.task, args.status, args.skill,
+                     args.skill_version, args.inputs, args.outputs, args.params, args.reason)
+-            elif args.cmd == 'finalize':
+-                result = finalize(p, args.experiment)
++            elif args.cmd == 'organize':
++                result = organize(p, args.experiment, args.task, args.status, args.files, args.analysis_tasks)
++            elif args.cmd == 'inventory': result = review_inventory(p, args.experiment, args.mode, args.reason)
++            elif args.cmd == 'finalize': result = finalize(p, args.experiment)
+             else:
+                 state = read_state(p, args.experiment)
+-                if args.cmd == 'inventory':
+-                    if args.mode == 'none' and not args.reason:
+-                        raise C.SkillError('无库存变更须给出 reason')
+-                    state.update(inventory=args.mode, inventory_reason=args.reason)
+-                else:
+-                    issues = json.loads(Path(args.file).read_text(encoding='utf-8'))
+-                    if not isinstance(issues, list) or not all(isinstance(x, str) for x in issues):
+-                        raise C.SkillError('issues 须为字符串数组；清空用 []')
+-                    state['issues'] = issues
+-                save_state(p, args.experiment, state)
+-                result = state
++                issues = json.loads(Path(args.file).read_text(encoding='utf-8'))
++                if not isinstance(issues, list) or not all(isinstance(x, str) for x in issues):
++                    raise C.SkillError('issues 须为字符串数组')
++                state['issues'] = issues; save_state(p, args.experiment, state); result = state
+             C.ok(result=result)
+     except (C.SkillError, OSError, ValueError, TypeError, KeyError) as exc:
+         C.die(str(exc), code='workflow_error')
+ 
+ 
+-if __name__ == '__main__':
+-    main()
++if __name__ == '__main__': main()

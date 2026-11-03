@@ -1,0 +1,80 @@
+# 仅为用户指定流程的记录结构示例，不是实验操作规程。
+# 不含实际参数，不声明安全暂停条件；正式使用须以用户规程补齐。
+version: 1
+stages:
+  - id: culture
+    title: 细胞培养阶段记录
+    entry: true
+    pause_after: false
+    requires: []
+    input_types: [cells]
+    outputs: [cells]
+    next: [rna]
+    steps:
+      - id: record
+        title: 记录该阶段实际执行的内容
+        fields:
+          - id: method
+            label: 用户实际执行的方法及规程来源
+            type: string
+            unit: null
+            required: true
+            measurement: false
+            allow_unknown: []
+  - id: rna
+    title: RNA 提取阶段记录
+    entry: true
+    pause_after: false
+    requires: []
+    input_types: [cells]
+    outputs: [rna]
+    next: [rt]
+    steps:
+      - id: record
+        title: 记录该阶段实际执行的内容
+        fields:
+          - id: method
+            label: 用户实际执行的方法及规程来源
+            type: string
+            unit: null
+            required: true
+            measurement: false
+            allow_unknown: []
+  - id: rt
+    title: 逆转录阶段记录
+    entry: true
+    pause_after: false
+    requires: []
+    input_types: [rna]
+    outputs: [cdna]
+    next: [qpcr]
+    steps:
+      - id: record
+        title: 记录该阶段实际执行的内容
+        fields:
+          - id: method
+            label: 用户实际执行的方法及规程来源
+            type: string
+            unit: null
+            required: true
+            measurement: false
+            allow_unknown: []
+  - id: qpcr
+    title: qPCR 阶段记录
+    entry: true
+    pause_after: false
+    requires: []
+    input_types: [cdna]
+    outputs: []
+    next: []
+    steps:
+      - id: record
+        title: 记录实际执行及提供的数据
+        fields:
+          - id: method
+            label: 用户实际执行的方法及规程来源
+            type: string
+            unit: null
+            required: true
+            measurement: false
+            allow_unknown: []

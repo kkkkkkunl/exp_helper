@@ -1,0 +1,142 @@
+最终验证环境：Windows / Python 3.9.10 / UTF-8；隔离临时目录位于项目 _v4_test_tmp。
+首轮完整验证输出（50项，新增标准输入场景之前）：
+
+test_calendar_pending_schedule_and_manual_time (_test_v4.Lifecycle) ... ok
+test_dates_upgrade_and_calendar_metadata_preserve_results (_test_v4.Lifecycle) ... ok
+test_final_text_results_autoarchive_and_nonfinal_rejected (_test_v4.Lifecycle) ... ok
+test_full_lifecycle_with_calendar_and_material_conversion (_test_v4.Lifecycle) ... ok
+test_invalid_fields_branches_and_result_versions (_test_v4.Lifecycle) ... ok
+test_inventory_changes_after_record_save_need_new_authorization (_test_v4.Lifecycle) ... ok
+test_local_action_transaction_recovers_after_failure (_test_v4.Lifecycle) ... ok
+test_material_product_replay_correction_and_cross_experiment_review (_test_v4.Lifecycle) ... ok
+test_migration_preserves_unknown_fields_and_rejects_future (_test_v4.Lifecycle) ... ok
+test_new_experiment_allocates_only_when_saving_and_freezes_template (_test_v4.Lifecycle) ... ok
+test_pause_is_pure_preview_and_closes_only_executed_steps (_test_v4.Lifecycle) ... ok
+test_pending_inventory_preserves_completion_then_archives (_test_v4.Lifecycle) ... ok
+test_real_retry_and_correction_do_not_rewrite_prior_attempt (_test_v4.Lifecycle) ... ok
+test_record_action_recovery_reuses_round_and_experiment (_test_v4.Lifecycle) ... ok
+test_stale_preview_rejected_then_manual_text_preserved (_test_v4.Lifecycle) ... ok
+test_template_validation_parameters_and_frozen_content (_test_v4.Lifecycle) ... ok
+test_text_results_and_importance_preserve_custom_data (_test_v4.Lifecycle) ... ok
+test_upgrade_mapping_explicit_and_missing_fields_not_dropped (_test_v4.Lifecycle) ... ok
+test_ambiguous_result_edit_needs_scope_without_resetting_all (_test_v3.V3) ... ok
+test_analysis_changes_invalidate_only_linked_organization (_test_v3.V3) ... ok
+test_cli_closed_record_round_without_analysis_calls (_test_v3.V3) ... ok
+test_custom_properties_preserved_legacy_status_removed (_test_v3.V3) ... ok
+test_duplicate_names_and_changed_target_require_refresh (_test_v3.V3) ... ok
+test_external_ambiguous_result_edit_keeps_task_history (_test_v3.V3) ... ok
+test_install_init_only_and_non_overwrite (_test_v3.V3) ... ok
+test_inventory_review_is_retriggered_each_record (_test_v3.V3) ... ok
+test_manual_edit_guard_and_unchanged_result_completion (_test_v3.V3) ... ok
+test_name_lookup_does_not_scan_other_bodies_and_moves_with_project (_test_v3.V3) ... ok
+test_organizing_existing_results_completes_without_analysis (_test_v3.V3) ... ok
+test_pending_analysis_and_pending_results_do_not_block_archive (_test_v3.V3) ... ok
+test_record_only_ignores_analysis_dependencies_and_archives (_test_v3.V3) ... ok
+test_recursive_install_targets_are_rejected_before_mutation (_test_v3.V3) ... ok
+test_result_evidence_changes_invalidate_only_owner (_test_v3.V3) ... ok
+test_targeted_invalidation_preserves_other_task (_test_v3.V3) ... ok
+test_unrelated_supplement_keeps_results_and_time (_test_v3.V3) ... ok
+test_concurrent_commits_one_wins_other_replans (_test_regressions.Regression) ... ok
+test_confirmation_bound_to_plan (_test_regressions.Regression) ... ok
+test_dispatch_missing_field_never_matches (_test_regressions.Regression) ... ok
+test_distinct_events_and_replays (_test_regressions.Regression) ... ok
+test_duplicate_event_rejected (_test_regressions.Regression) ... ok
+test_grouped_aliquot_initialization (_test_regressions.Regression) ... ok
+test_mixed_sources (_test_regressions.Regression) ... ok
+test_nonfinite_and_path_ids_rejected (_test_regressions.Regression) ... ok
+test_recovery_after_interrupted_writes (_test_regressions.Regression) ... ok
+test_reserved_ids_survive_deleted_sample_file (_test_regressions.Regression) ... ok
+test_resume_and_manual_edit_guard (_test_regressions.Regression) ... ok
+test_return_restores_stock (_test_regressions.Regression) ... ok
+test_same_name_result_files_rejected (_test_regressions.Regression) ... ok
+test_stale_batch_writes_nothing (_test_regressions.Regression) ... ok
+test_unit_change_invalidates_plan (_test_regressions.Regression) ... ok
+
+----------------------------------------------------------------------
+Ran 50 tests in 9.674s
+
+OK
+
+ok   roundtrip-0
+ok   roundtrip-1
+ok   roundtrip-2
+ok   roundtrip-3
+ok   roundtrip-4
+ok   roundtrip-5
+ok   roundtrip-6
+ok   roundtrip-7
+ok   src.id
+ok   src.qty
+ok   src.conc[0].analyte
+ok   src.conc[1].unit
+ok   src.parent
+ok   src.sources
+ok   src.experiments
+ok   src.history[1].note
+ok   src.history[0].at
+ok   src-roundtrip
+ok   empty
+ok   comment-only
+ok   reject-tab-indent
+ok   reject-unclosed-flow
+ok   reject-unclosed-quote
+ok   block-scalar
+
+0 failures
+ok   find
+ok   show.kb
+ok   show.default
+ok   validate
+ok   dispatch.hit
+ok   dispatch.miss
+ok   exp.id-format
+ok   exp.dir
+ok   sample.A
+ok   sample.B
+ok   sample.other-day-resets
+ok   aliquot
+ok   aliquot.no-reuse
+ok   no-backfill
+ok   plan.items
+ok   plan.checklist
+ok   commit.not-yet
+ok   commit.count
+ok   commit.quantity
+ok   commit.unit
+ok   idempotent
+ok   idempotent-receipt-retained
+ok   insufficient
+ok   no-cross-dimension
+ok   archive.count
+ok   archive.source-removed
+ok   archive.link
+ok   archive.conflict
+ok   archive.conflict-keeps-source
+ok   result.id
+ok   result.v1
+ok   result.unmarked
+ok   result.noop
+ok   result.v2
+ok   result.marked-v1
+ok   result.v3
+ok   result.old-mark-kept
+ok   filter.cross-project
+ok   stock.has-A
+
+全部通过
+
+[('..\\assets\\stage-template.template.yaml', 1), ('..\\assets\\workflow-structure.example.yaml', 4)]
+
+最后一轮完整回归（新增安装后CLI标准输入无写入场景，共51项）的结束输出：
+ok
+test_reserved_ids_survive_deleted_sample_file (_test_regressions.Regression) ... ok
+test_resume_and_manual_edit_guard (_test_regressions.Regression) ... ok
+test_return_restores_stock (_test_regressions.Regression) ... ok
+test_same_name_result_files_rejected (_test_regressions.Regression) ... ok
+test_stale_batch_writes_nothing (_test_regressions.Regression) ... ok
+test_unit_change_invalidates_plan (_test_regressions.Regression) ... ok
+
+----------------------------------------------------------------------
+Ran 51 tests in 9.878s
+
+OK

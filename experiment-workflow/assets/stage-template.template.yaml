@@ -1,0 +1,22 @@
+# 通用作者起点，仅为记录结构；依据用户真实规程补充。
+version: 1
+stages:
+  - id: stage-a
+    title: 第一阶段记录
+    entry: true
+    pause_after: false
+    requires: []
+    input_types: []
+    outputs: []
+    next: []
+    steps:
+      - id: record-actual
+        title: 收集本步骤实际信息
+        fields:
+          - id: actual-method
+            label: 实际执行内容及规程来源
+            type: string
+            unit: null
+            required: true
+            measurement: false
+            allow_unknown: []

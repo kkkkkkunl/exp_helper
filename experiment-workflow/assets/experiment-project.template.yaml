@@ -1,0 +1,18 @@
+# 安装时自动生成；路径均相对项目根。
+version: 4
+timezone: Asia/Shanghai
+calendar:
+  status: needs_setup
+project: 未命名课题
+knowledge_base: .
+sample_library: samples
+ppt_template: null
+method_templates: []
+# 阶段模板条目增加 format: staged；普通模板为 plain 或省略。
+analysis_skill_repository: skills/analysis
+analysis_map: []
+# analysis_map 只填索引中的名称，路径由 skills/analysis/index.json 提供。
+units:
+  convert:
+    - [uL, mL]
+    - [mg, g]
