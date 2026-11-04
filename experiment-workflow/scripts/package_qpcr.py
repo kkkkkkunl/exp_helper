@@ -7,16 +7,22 @@ from pathlib import Path
 import zipfile
 
 ROOT=Path(__file__).resolve().parents[2]
+SKILL_ROOT=ROOT/'sub_skill'
+SKILL_NAMES=('cell-qpcr','qpcr-ddcq')
 
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 
 def files(directory):
+    if not directory.is_dir():raise ValueError('Missing skill source: '+str(directory))
+    if not (directory/'SKILL.md').is_file():raise ValueError('Missing skill entry: '+str(directory/'SKILL.md'))
     for p in sorted(directory.rglob('*')):
         if p.is_symlink():raise ValueError('Package cannot contain symbolic links')
         if p.is_file() and not any(x.startswith('.') or x=='__pycache__' for x in p.relative_to(directory).parts) and p.suffix not in ('.pyc','.pyo'):
             yield p
 
 def package(out,verification):
+    sources={name:list(files(SKILL_ROOT/name)) for name in SKILL_NAMES}
+    if any(not paths for paths in sources.values()):raise ValueError('Skill source cannot be empty')
     verification=Path(verification).resolve()
     proof=json.loads(verification.read_text(encoding='utf-8'))
     if proof.get('status')!='passed':raise ValueError('Release requires actual passed verification evidence')
@@ -25,27 +31,26 @@ def package(out,verification):
         if not path.is_relative_to(ROOT) or not path.is_file() or sha(path)!=digest:
             raise ValueError('Verified source changed: '+filename)
     out=Path(out).resolve()
-    if any(out.is_relative_to(ROOT/name) for name in ('cell-qpcr','qpcr-ddcq')):raise ValueError('Output must be outside skill source')
-    out.mkdir(parents=True,exist_ok=True)
+    if any(out.is_relative_to((SKILL_ROOT/name).resolve()) for name in SKILL_NAMES):raise ValueError('Output must be outside skill source')
     names=['cell-qpcr-1.0.0.zip','qpcr-ddcq-1.0.0.zip','qpcr-skills-and-template-1.0.0.zip','qpcr-release-manifest.json',verification.name]
     if any((out/n).exists() for n in names):raise FileExistsError('Release output already exists; refusing overwrite')
-    contents=[]
-    planned=[p for name in ('cell-qpcr','qpcr-ddcq') for p in files(ROOT/name)]
+    planned=[p for paths in sources.values() for p in paths]
     planned.extend([ROOT/'experiment-workflow/assets/qPCR.md',ROOT/'experiment-workflow/assets/legacy/qPCR-1.0.0.md'])
+    for filename in ('qpcr-实施说明与验证.md','qpcr-sub-skill-迁移说明与验证.md'):
+        document=ROOT/'docs'/filename
+        if document.is_file():planned.append(document)
     if any(p.relative_to(ROOT).as_posix() not in proof['source_files'] for p in planned):
         raise ValueError('Unverified source was added after the verification record')
-    for name in ('cell-qpcr','qpcr-ddcq'):
-        paths=list(files(ROOT/name))
+    out.mkdir(parents=True,exist_ok=True)
+    for name,paths in sources.items():
         with zipfile.ZipFile(out/(name+'-1.0.0.zip'),'w',zipfile.ZIP_DEFLATED) as z:
-            for path in paths:z.write(path,path.relative_to(ROOT).as_posix())
-        contents.extend(paths)
-    contents.extend([ROOT/'experiment-workflow/assets/qPCR.md',ROOT/'experiment-workflow/assets/legacy/qPCR-1.0.0.md'])
-    docs=ROOT/'docs/qpcr-实施说明与验证.md'
-    if docs.is_file():contents.append(docs)
+            for path in paths:z.write(path,path.relative_to(SKILL_ROOT).as_posix())
+    contents=list(planned)
     if verification.is_relative_to(ROOT):contents.append(verification)
     with zipfile.ZipFile(out/'qpcr-skills-and-template-1.0.0.zip','w',zipfile.ZIP_DEFLATED) as z:
         for path in contents:z.write(path,path.relative_to(ROOT).as_posix())
     result={'release':'1.0.0','template_version':'2.0.0','template_name':'cell-qpcr',
+            'source_layout':'sub_skill/<skill>','standalone_package_layout':'<skill>/SKILL.md',
             'requires':['Python 3.9+','workflow experiment-skill version 1 numeric contract','workflow Markdown embedded staged templates','openpyxl and XlsxWriter for file analysis'],
             'installation':'Merge project configuration; install each skill using existing skill_store; no automatic install, Git or archive.',
             'files':{p.relative_to(ROOT).as_posix():sha(p) for p in contents},

@@ -2,16 +2,42 @@
 
 ## Purpose
 
-让已有结果整理、专业分析和科研汇报各自按请求执行，并通过稳定结果项、版本和证据来源保持可追溯性，避免将生成文件、精选标记、实验结束或归档错误解释为科学结论或分析完成。
+使实验级技能在实验确定后按步骤提供计算，已有结果整理、专业分析和科研汇报各自按请求执行，并通过技能依据、稳定结果项及版本保持追溯，避免将计算用量、文件生成、实验结束或归档误作实际操作及分析完成。
 
 ## ADDED Requirements
 
 ### Requirement: Separate organization from requested analysis
-系统 SHALL 区分整理已有结果与执行分析，仅在明确要求分析、计算或绘图时加载目标分析技能。分析缺失或受阻 SHALL 如实记录，不编造结果，也不阻塞独立的记录与已有结果整理。
+系统 SHALL 区分实验准备计算、整理已有结果与执行结果分析。实验确定后 SHALL 加载对应实验级技能，相关步骤输入齐全时执行其规定计算，无需另发计算指令；技能启动或上样计算 SHALL 不自动触发全部结果分析。独立的结果分析、统计或绘图仍 SHALL 按明确请求或已确认实验方案中的明确任务执行，不因原始附件或最终结果整理指令自行增加统计。分析缺失或受阻 SHALL 如实记录，不编造结果，也不阻塞独立的记录与已有结果整理。
 
 #### Scenario: Organize provided results without analysis
 - **WHEN** 用户提交已有结果且未请求新的数据分析
 - **THEN** 系统整理提供的内容，不附加新的统计方法、测量值或科学结论
+
+#### Scenario: Prepare loading without a new calculation request
+- **WHEN** 已确定实验进入上样步骤，skill 所需输入和参数均已明确
+- **THEN** 系统按该 skill 计算并展示上样量，不要求用户再说一次计算，也不自动执行尚未请求的统计分析
+
+### Requirement: Skill-owned loading calculations and bounded failures
+计算公式、单位约束及适用条件 SHALL 来自选定 skill，输入采用本次方案来源或用户提供、明确确认的参数，实测信息 SHALL 不由默认值生成。系统 SHALL 只集中收集当前步骤缺项；未知值不填零。缺参、单位不兼容、负补液量或违反已提供约束时 SHALL 明确原因，不将异常值作为可执行上样方案，只暂停相关样品或步骤。
+
+#### Scenario: One sample lacks a required concentration
+- **WHEN** 多个样品中只有一个缺少当前步骤必须的浓度
+- **THEN** 系统列出该样品缺项，不猜测其上样量，其他输入齐全且无依赖的样品仍可计算
+
+#### Scenario: The inputs produce a negative water volume
+- **WHEN** skill 校验发现输入导致负补液量或单位条件不满足
+- **THEN** 系统展示异常及依据，暂停受影响计算，不将数值默认为零或当作可执行方案
+
+### Requirement: Freeze skill evidence and review targeted recalculations
+首次保存时系统 SHALL 固定实际使用的技能版本或可恢复的内容依据及计算参数，同一实验跨会话续接 SHALL 沿用该依据，不因技能安装更新静默替换。升级 SHALL 先展示差异及受影响计算，经明确确认后重算相关部分并保留原依据；未保存计算随输入更新，已保存更正 SHALL 留存历史，只标记依赖变化的下游待复核，不倒改实际操作或重置无关任务。
+
+#### Scenario: Continue after the installed skill is updated
+- **WHEN** 已保存实验暂停后技能安装内容发生变化，再次继续同一实验
+- **THEN** 系统沿用原已固定依据；原内容不能恢复时报告依赖问题，不把新版本冒充原版本
+
+#### Scenario: Upgrade the skill explicitly
+- **WHEN** 用户确认已展示的技能升级差异及计算影响
+- **THEN** 系统保留旧依据并重算受影响部分，已发生实际用量、无关任务及独立结果完成时间不被覆盖
 
 ### Requirement: Versioned results and user selection
 系统 SHALL 为结果项维护稳定身份、参数和文件证据；数据或分析参数变化形成新版本，相同参数与文件不重复建版本。新版本默认未精选，旧版本及其标记保留，精选仅表示用户选择。

@@ -8,3 +8,41 @@ __pycache__/
 /_v4_test_tmp/
 /_v5_test_tmp/
 /.qpcr-work/
+
+# OpenSpec 配置、变更规划、归档记录及本地技能说明
+/openspec/
+/hisotry/
+/.agents/skills/.openspec-target
+/.agents/skills/openspec-*/
+
+# grill-with-docs 及其配套技能说明
+/.agents/skills/grill-with-docs/
+/.agents/skills/grilling/
+/.agents/skills/domain-modeling/
+
+# 访谈、设计决策、术语表与配套开发说明
+/docs/*设计访谈.md
+/docs/*设计方案.md
+/docs/设计文件索引.md
+/docs/adr/
+/docs/GLOSSARY.md
+/docs/具体修改说明.md
+/docs/*实施说明与验证.md
+/docs/*迁移说明与验证.md
+/docs/*验收记录.json
+/docs/*打包验证.json
+/docs/*验证日志.txt
+/测试结果.txt
+/修改差异.patch
+
+# 测试目录与测试脚本
+**/tests/
+**/__tests__/
+**/_test_*
+**/test_*.py
+**/*_test.py
+**/*.test.*
+**/*.spec.*
+
+# 日期归档的临时验收证据
+/dist/sub-skill-layout-*/

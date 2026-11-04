@@ -13,6 +13,10 @@
 - **WHEN** 用户暂停纯过程记录且尚无结果整理请求
 - **THEN** 本次已执行部分收尾完成，结果整理属性仍为 false/null，后续步骤保留待办
 
+#### Scenario: Save a preparation calculation
+- **WHEN** 用户确认保存上样计算，但没有提交最终结果或完成结果整理
+- **THEN** 系统不因计算有数值或技能已加载而将结果整理标完、结束实验或自动归档
+
 ### Requirement: Explicit final-result intent and observable completion
 只有明确提交本次最终结果 SHALL 触发自动整理与结束流程；普通结果讨论、初步结果、单独上传附件或仅提及关键词不得触发。必要内容回填并建立来源关联后 SHALL 标记该范围整理完成并视为实验结束。
 
@@ -37,6 +41,17 @@
 #### Scenario: Archive before analysis finishes
 - **WHEN** 当前材料有效且库存核查完成，用户明确请求归档但分析仍待处理
 - **THEN** 系统归档已有材料并保留待分析状态，不强行标记分析或结果已完成
+
+### Requirement: Include associated project history in experiment archives
+实验归档 SHALL 包含项目根 history 中归属该实验的历史记录及可核对证据，保留原位置并维护附件追溯；目录位于实验目录之外 SHALL 不成为漏归档理由。系统 SHALL 不混入其他实验历史，也不将 OpenSpec 的 hisotry 变更历史视为实验材料。历史证据改变 SHALL 使相关归档待复核，不影响无关实验或凭此撤销无关分析结果。
+
+#### Scenario: Archive one experiment with shared history storage
+- **WHEN** 项目根 history 同时包含多个实验的历史，本次仅归档其中一个实验
+- **THEN** 归档清单关联该实验的历史及证据，不遗漏它们，也不纳入其他实验或 OpenSpec 历史
+
+#### Scenario: Associated history evidence is changed
+- **WHEN** 已归档实验关联的历史文件缺失或内容被外部改动
+- **THEN** 系统报告该归档证据需要复核，不继续报告原证据完整有效，也不重置无关分析任务
 
 ### Requirement: Experiment importance independent of result selection
 系统 SHALL 允许用户在结果输入、归档或后续修改时设置实验级 important，默认 false，不阻塞自动归档；该属性 SHALL 与结果版本的精选独立，并保留其他自定义属性。

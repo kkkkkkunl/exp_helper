@@ -4,6 +4,8 @@
 
 使用现有主 workflow 的 `skill_store.py --project <实际实验项目> install --source <cell-qpcr目录>`，独立安装 qpcr-ddcq。按名称解析，两个技能都在项目 skills/analysis 索引中，不另迁移库，不初始化任意源码目录为实验项目。同名拒绝覆盖，明确更新才 refresh。
 
+仓库安装源分别为 `sub_skill/cell-qpcr/` 和 `sub_skill/qpcr-ddcq/`；独立技能包解压后使用其各自技能目录，不依赖仓库父目录。`sub_skill/` 仅组织源码，不作为单个技能安装，也不改变项目 `skills/analysis/<技能名>` 的布局。
+
 模板使用 qPCR.md 2.0.0，项目 method_templates 条目 name=cell-qpcr、format=staged、version=2.0.0、experiment_skill=cell-qpcr；路径相对项目根。独立 analysis_map 可将 experiment_type=cell-qpcr、data_type=qpcr-cq 映射到 qpcr-ddcq。仅合并所需条目，不覆盖其他配置。
 
 ## 运行边界

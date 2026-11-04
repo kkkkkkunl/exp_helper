@@ -31,6 +31,17 @@
 - **WHEN** 用户确认后提交时台账已不同于展示清单的依据
 - **THEN** 系统不按旧授权提交，而是生成更新清单并重新确认
 
+### Requirement: Calculations do not constitute inventory consumption
+计算、展示、确认保存拟用上样量或其重算 SHALL 不代表已实际取用，不产生库存消耗。库存核查 SHALL 以用户报告或明确确认的实际操作和实际量为依据，仍要求具体清单授权；历史版本或计算修订不得改写已提交库存事件。
+
+#### Scenario: Save calculated loading before performing it
+- **WHEN** 用户保存已有上样计算，但尚未报告或确认实际操作
+- **THEN** 记录可保留拟用量，库存没有因计算而扣减，后续实际操作按独立事件核查
+
+#### Scenario: Recalculate after an actual use
+- **WHEN** 已实际使用并记账的样品因输入更正得到新的计算量
+- **THEN** 原实际消耗保留；确需更正库存时另走已确认的调整清单，不按新计算重复扣账或撤销旧事件
+
 ### Requirement: Idempotent recoverable inventory transactions
 系统 SHALL 为每次真实操作维护独立事件身份，同事件重放不重复记账，已提交事件内容不得改写。业务校验失败 SHALL 不写入任何台账；已开始的多文件提交中断后 SHALL 在后续访问先恢复，并仅在恢复成功后返回库存状态。
 

@@ -14,13 +14,14 @@ import stage_workflow as S
 import workflow as W
 
 ROOT=Path(__file__).resolve().parents[2]
+SKILL_ROOT=ROOT/'sub_skill'
 
 
 class CellIntegration(unittest.TestCase):
     def setUp(self):
         self.f=fixtures.ExperimentSkills('runTest');self.f.setUp();self.addCleanup(self.f.doCleanups)
         self.p,self.sample=self.f.p,self.f.sample
-        for name in ('cell-qpcr','qpcr-ddcq'):Store.install(self.p,ROOT/name)
+        for name in ('cell-qpcr','qpcr-ddcq'):Store.install(self.p,SKILL_ROOT/name)
         self.template=self.f.root/'qpcr.md';shutil.copy2(ROOT/'experiment-workflow/assets/qPCR.md',self.template)
         self.p.cfg['method_templates']=[{'name':'cell-qpcr','path':'qpcr.md','version':'2.0.0','format':'staged','experiment_skill':'cell-qpcr'}]
         self.p.cfg['analysis_map']=[{'match':{'experiment_type':'cell-qpcr','data_type':'qpcr-cq'},'skill':'qpcr-ddcq'}]
@@ -40,10 +41,10 @@ class CellIntegration(unittest.TestCase):
         for name in ('cell-qpcr','qpcr-ddcq'):
             resolved=Store.resolve(self.p,name);self.assertTrue(resolved['available'])
             self.assertEqual(resolved['metadata']['version'],'1.0.0')
-            with self.assertRaises(C.SkillError):Store.install(self.p,ROOT/name)
+            with self.assertRaises(C.SkillError):Store.install(self.p,SKILL_ROOT/name)
             import re
-            for link in re.findall(r'\]\(([^)]+)\)',(ROOT/name/'SKILL.md').read_text(encoding='utf-8')):
-                if '://' not in link:self.assertTrue((ROOT/name/link).is_file(),link)
+            for link in re.findall(r'\]\(([^)]+)\)',(SKILL_ROOT/name/'SKILL.md').read_text(encoding='utf-8')):
+                if '://' not in link:self.assertTrue((SKILL_ROOT/name/link).is_file(),link)
         self.assertEqual(Store.resolve(self.p,'cell-qpcr')['metadata']['kind'],'experiment')
         self.assertTrue(dispatch(self.p,'cell-qpcr','qpcr-cq')['available'])
         before=self.f.tree()
@@ -93,9 +94,9 @@ class CellIntegration(unittest.TestCase):
         import csv
         import importlib.util
         import results as R
-        sys.path.insert(0,str(ROOT/'qpcr-ddcq/scripts'))
+        sys.path.insert(0,str(SKILL_ROOT/'qpcr-ddcq/scripts'))
         from analyze import execute
-        spec=importlib.util.spec_from_file_location('cell_fixture',ROOT/'qpcr-ddcq/tests/create_fixture.py')
+        spec=importlib.util.spec_from_file_location('cell_fixture',SKILL_ROOT/'qpcr-ddcq/tests/create_fixture.py')
         fixture=importlib.util.module_from_spec(spec);spec.loader.exec_module(fixture)
         d=self.draft('analysis-entry',entry='results',method_text='仅整理已有细胞qPCR，不补写前序操作。')
         p=S.preview(self.p,d);saved=S.save(self.p,d,p['preview_hash'],'合成确认');eid=saved['experiment']
