@@ -32,7 +32,7 @@ python <主skill>/scripts/install.py --project <项目根> --init-only
 
 配置 `analysis_skill_repository: skills/analysis`；所有技能索引路径相对项目根。项目技能库不接受绝对路径、越出项目的路径或符号链接。
 
-## 安装、更新分析 skill
+## 安装、更新实验或分析 skill
 
 ```bash
 python scripts/skill_store.py --project <项目根> install --source <待安装skill目录>
@@ -42,6 +42,8 @@ python scripts/skill_store.py --project <项目根> refresh
 install 从 SKILL.md frontmatter 读取 name、description、可选 version/input_types，复制到 `<库>/<name>/` 并更新 index.json。同名存在时报错，不自动覆盖。更新已安装内容须先明确更新范围，再执行 refresh；refresh 只在维护阶段枚举元信息并计算文件哈希，检测重复名称后整份拒绝，不留下部分新索引。
 
 不自动下载缺失技能。未提供任何专业分析 skill 时保留空技能库。
+
+实验级 skill 沿用同一技能库，可在 frontmatter 声明 `kind: experiment`、`experiment_types`；旧条目不需要迁移。项目配置 `experiment_skill_map` 各项声明 experiment_type 与 skill；所选方法模板配置可声明 experiment_skill。该启动映射与用于结果分析的 analysis_map 独立，不将记录中的同名文本当配置。技能公式、工具及可选执行契约见 [实验技能模块](experiment-skill-module.md)。
 
 ## 日常定位
 

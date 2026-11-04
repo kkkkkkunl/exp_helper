@@ -346,6 +346,14 @@ class Project:
                     import stage_templates
                     try: stage_templates.load(self, tpl)
                     except (SkillError, ValueError) as exc: problems.append(str(exc))
+                bound = tpl.get('experiment_skill') if isinstance(tpl, dict) else None
+                if bound is not None and not (isinstance(bound, str) and bound.strip() or
+                        isinstance(bound, list) and bound and all(isinstance(x, str) and x.strip() for x in bound)):
+                    problems.append('模板 experiment_skill 须为技能名或明确候选列表')
+            mapping = self.cfg.get('experiment_skill_map') or []
+            if not isinstance(mapping, list) or any(not isinstance(r, dict) or not isinstance(r.get('experiment_type'), str)
+                                                    or not isinstance(r.get('skill'), str) for r in mapping):
+                problems.append('experiment_skill_map 须包含 experiment_type 与 skill 字符串')
             if sum(bool(t.get("default")) for t in templates if isinstance(t, dict)) > 1:
                 problems.append("存在多个默认方法模板")
         if scope in ("report", "all"):

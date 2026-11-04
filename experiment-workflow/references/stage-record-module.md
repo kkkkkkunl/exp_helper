@@ -6,6 +6,7 @@
 
 1. 识别已有实验或新实验。已有实验先 resume；新实验预览阶段不分配编号。使用旧样品开展新实验另建编号，前序操作只链接来源。
 2. 按模板步骤集中提示相关字段。用户自由文本或多步骤输入由会话整理为结构化 values，只追问缺项和冲突；返回的 prompts 提供模板字段与条件依据，不补造流程。
+   实验及方案确定后同时遵循 [实验技能模块](experiment-skill-module.md)，按当前步骤从 skill 取得计算规则。模板不执行计算，预览返回 calculations 与技能状态；缺参仅暂停相关计算。
 3. 普通参数回答保留在会话内。不要为了预览在项目中保存草稿 JSON、原话文件、调用 start、分配编号或生成库存计划。可用 Python API 内存对象，或 CLI `--file -` 从标准输入传入 JSON；执行加 `-B` 避免生成字节码文件。
 4. 预览展示完整拟写记录、待补项、真实步骤和具体库存清单。用户确认后才 save，携带该次 preview_hash 和确认来源；若清单已明确获确认，另外携带所展示 inventory.hash。没有清单确认也可保存独立记录，库存保持等待。
 5. 用户说“暂停”：保存已做部分并完成本次阶段收尾，剩余步骤仍未执行，转入日历待办。没有规程依据时不把记录暂停解释为可以直接继续实际操作。
@@ -22,6 +23,9 @@
 | raw_input | 该次用户原话，保存时作为来源；不得用模型编造的输入替代 |
 | experiment | 已有编号；新实验省略 |
 | template / entry | 明确选择的方法模板和合法入口 |
+| experiment_type / experiment_skill / plan | 已确定实验类型、可选明确技能选择或用户方案；不靠关键词猜测开始意图 |
+| calculations | 独立计算数组，包含 id、calculation、sample、stage、step、inputs、params、可选 depends_on 与更正 reason，详见实验技能模块 |
+| skill_evidence_hash / skill_upgrade | 可选的既有计算依据绑定／明确技能升级（skill、confirmed、reason）；升级须展示前后依据、文件差异及影响后确认 |
 | actual_date / purpose | 用户提供或可追溯的实际日期及目的 |
 | samples | 已有具体样品编号列表 |
 | operations | sample、stage、step、executed 和 values；只对实际执行设 true |
@@ -42,6 +46,8 @@ py -3.9 -B scripts/stage_workflow.py --project <项目根> resume --experiment <
 ```
 
 预览哈希绑定实际记录、状态、样品和模板。预览后有变化须重新展示确认。首次保存才分配新编号；动作日志覆盖本地记录与收据，失败后重放原动作恢复，不重复增加记录轮次。需要恢复中断本地动作时显式调用 `workflow.py --project ... recover`。
+
+计算结果与采用技能内容也绑定预览。首次保存固定实际使用的完整目标技能内容依据，resume 继续使用旧依据而非安装目录新版本。计算记录独立于已执行方法和实测字段，保存时不能用拟用量自动填充 operations 或库存清单。记录修改前的完整旧版进入项目根 history，同一动作恢复复用首次历史身份；日历同步或归档内部收据不制造无内容变化历史。
 
 ## 样品、分支与更正
 

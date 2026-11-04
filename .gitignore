@@ -6,3 +6,5 @@ __pycache__/
 # 合成测试的临时文件与进程输出
 /_e2e_run/
 /_v4_test_tmp/
+/_v5_test_tmp/
+/.qpcr-work/

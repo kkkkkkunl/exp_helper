@@ -1,0 +1,3 @@
+interface:
+  display_name: "qPCR 数据整理"
+  short_description: "从原始 Cq 完成严格复孔质控、ΔΔCq 及公式可追溯 Excel 与原生图表"

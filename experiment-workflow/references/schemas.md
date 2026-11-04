@@ -27,6 +27,8 @@ YAML 配置和样品属性使用 YAML 子集；内部 workflow 与日历状态�
 
 ## experiment-project.yaml
 
+实验确定时的技能路由可在 method_templates 条目增加 experiment_skill，或用 experiment_skill_map 的 experiment_type、skill 映射。兼容原 analysis_skill_repository、analysis_map，前者继续承载名称索引，后者用于独立结果分析。绑定及计算契约见 [实验技能模块](experiment-skill-module.md)。
+
 ```yaml
 version: 3
 analysis_skill_repository: skills/analysis
@@ -50,6 +52,10 @@ units:
 ```
 
 约束：`default: true` 至多一个；`knowledge_base` 必填；`sample_library` 默认 `samples`。
+
+## 内部 workflow 扩展
+
+内部 workflow 仍兼容 v2/v3/v4，新增可选字段包括 experiment_type、skill_snapshot、calculations、calculation_changes、skill_history 和 record_history；缺失则初始化为空或未知，不补造旧技能依据。skill_snapshot 引用内部已校验的完整目标内容快照；record_history 关联项目根 history 文件、修改时间、动作、原因、原内容与历史哈希和附件映射。未知未来版本拒绝降级。
 
 ## 样本台账 `<知识库>/<样本库>/<编号>.md`
 

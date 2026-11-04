@@ -1,0 +1,362 @@
+{
+  "version": 1,
+  "experiment_types": [
+    "cell-qpcr",
+    "细胞RT-qPCR"
+  ],
+  "tools": [],
+  "calculations": {
+    "treatment_duration": {
+      "entrypoint": "scripts/calculate.py",
+      "basis": "时长=(end_epoch-start_epoch)/3600；原始时点须含时区并一致",
+      "inputs": {
+        "start_epoch": {
+          "unit": "s"
+        },
+        "end_epoch": {
+          "unit": "s"
+        }
+      },
+      "outputs": {
+        "duration": {
+          "unit": "h",
+          "minimum": 0
+        }
+      }
+    },
+    "rt_reaction": {
+      "entrypoint": "scripts/calculate.py",
+      "basis": "RNA体积=质量/浓度；补水=总体积-RNA-gDNA-RT；AG11728-v6约束另核对",
+      "inputs": {
+        "rna_mass": {
+          "unit": "ng",
+          "minimum": 0
+        },
+        "concentration": {
+          "unit": "ng/uL",
+          "minimum": 0
+        },
+        "total_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "gdna_mix": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "rt_mix": {
+          "unit": "uL",
+          "minimum": 0
+        }
+      },
+      "outputs": {
+        "rna_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "water_volume": {
+          "unit": "uL",
+          "minimum": 0
+        }
+      }
+    },
+    "rna_equivalent": {
+      "entrypoint": "scripts/calculate.py",
+      "basis": "RNA当量=原始质量/RT体积/总稀释倍数；不是实测cDNA浓度",
+      "inputs": {
+        "rna_mass": {
+          "unit": "ng",
+          "minimum": 0
+        },
+        "rt_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "dilution": {
+          "unit": null,
+          "minimum": 0
+        },
+        "target_mass": {
+          "unit": "ng",
+          "minimum": 0
+        }
+      },
+      "outputs": {
+        "equivalent_concentration": {
+          "unit": "ng/uL",
+          "minimum": 0
+        },
+        "template_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "stock_equivalent": {
+          "unit": "uL",
+          "minimum": 0
+        }
+      }
+    },
+    "primer_final": {
+      "entrypoint": "scripts/calculate.py",
+      "basis": "引物终浓度=工作液浓度*单孔体积/确认总体积",
+      "inputs": {
+        "f_working": {
+          "unit": "uM",
+          "minimum": 0
+        },
+        "r_working": {
+          "unit": "uM",
+          "minimum": 0
+        },
+        "f_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "r_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "total_volume": {
+          "unit": "uL",
+          "minimum": 0
+        }
+      },
+      "outputs": {
+        "f_final": {
+          "unit": "uM",
+          "minimum": 0
+        },
+        "r_final": {
+          "unit": "uM",
+          "minimum": 0
+        }
+      }
+    },
+    "qpcr_recipe": {
+      "entrypoint": "scripts/calculate.py",
+      "basis": "补水=总体积-Premix-模板-F-R-ROX；公共底液=Premix+水+ROX",
+      "inputs": {
+        "total_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "premix": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "template": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "f_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "r_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "rox": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "dilution": {
+          "unit": null,
+          "minimum": 0
+        }
+      },
+      "outputs": {
+        "water_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "base_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "stock_equivalent": {
+          "unit": "uL",
+          "minimum": 0
+        }
+      }
+    },
+    "quantity_sum": {
+      "entrypoint": "scripts/calculate.py",
+      "basis": "两个同单位非负标量之和；脚本按params.unit校验uL或well及有限数值",
+      "inputs": {},
+      "outputs": {}
+    },
+    "mix3_assay": {
+      "entrypoint": "scripts/calculate.py",
+      "basis": "mix3各体积=单孔组分*实际孔数*k3；系数不连乘",
+      "inputs": {
+        "wells": {
+          "unit": "well",
+          "minimum": 0
+        },
+        "total_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "f_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "r_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "k1": {
+          "unit": null,
+          "minimum": 1
+        },
+        "k2": {
+          "unit": null,
+          "minimum": 1
+        },
+        "k3": {
+          "unit": null,
+          "minimum": 1
+        }
+      },
+      "outputs": {
+        "mix2_transfer": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "f_volume_total": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "r_volume_total": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "total": {
+          "unit": "uL",
+          "minimum": 0
+        }
+      }
+    },
+    "mix2_block": {
+      "entrypoint": "scripts/calculate.py",
+      "basis": "mix2=底液/模板单孔体积*块实际孔数*k2；扣实际mix3需求",
+      "inputs": {
+        "wells": {
+          "unit": "well",
+          "minimum": 0
+        },
+        "base_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "template_volume": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "required": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "k1": {
+          "unit": null,
+          "minimum": 1
+        },
+        "k2": {
+          "unit": null,
+          "minimum": 1
+        },
+        "k3": {
+          "unit": null,
+          "minimum": 1
+        }
+      },
+      "outputs": {
+        "base_take": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "template_total": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "total": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "required": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "remaining": {
+          "unit": "uL",
+          "minimum": 0
+        }
+      }
+    },
+    "mix1_recipe": {
+      "entrypoint": "scripts/calculate.py",
+      "basis": "mix1组分=同组成单孔量*实际孔数*k1；扣实际mix2需求",
+      "inputs": {
+        "wells": {
+          "unit": "well",
+          "minimum": 0
+        },
+        "premix": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "water": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "rox": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "required": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "k1": {
+          "unit": null,
+          "minimum": 1
+        },
+        "k2": {
+          "unit": null,
+          "minimum": 1
+        },
+        "k3": {
+          "unit": null,
+          "minimum": 1
+        }
+      },
+      "outputs": {
+        "premix_total": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "water_total": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "rox_total": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "total": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "required": {
+          "unit": "uL",
+          "minimum": 0
+        },
+        "remaining": {
+          "unit": "uL",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

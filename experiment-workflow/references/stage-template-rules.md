@@ -4,7 +4,11 @@
 
 ## 文件与配置
 
-阶段模板是 YAML 文档，根字段 `version: 1` 与 `stages`。项目 `method_templates` 配置该文件的 name、path、version、`format: staged`。省略 format 或设 plain 表示普通方法文档，不自动推断阶段。
+模板负责阶段、步骤、输入及记录结构，不提供计算实现。项目 method_templates 条目可用 `experiment_skill` 明确绑定一个 skill 名，或列出待明确选择的候选；此字段是配置元信息，不从同名普通记录字段推断。计算和校验统一由 [实验级技能](experiment-skill-module.md) 承担。细胞 qPCR 模板 2.0.0 绑定 cell-qpcr，专业计算已迁出模板；旧 1.0.0 的真实源内容见 assets/legacy，已冻结实验保持原状，显式升级才映射，不以旧公式作为缺失技能的自动后备。
+
+阶段模板是 YAML 文档，根字段 `version: 1` 与 `stages`；也支持在 Markdown 中用唯一的 `yaml experiment-workflow` 围栏代码块嵌入相同定义。其他 YAML 代码块和 Markdown frontmatter 不作为阶段定义。标记块缺少闭合围栏或出现多个标记块时报错，不猜选。项目 `method_templates` 配置该文件的 name、path、version、`format: staged`。省略 format 或设 plain 表示普通方法文档，不自动推断阶段。
+
+单文件示例为 [细胞 qPCR 模板](../assets/qPCR.md)。其 frontmatter 是模板元信息，标记代码块是阶段定义；首次保存仍固定整份 Markdown 原文、版本与哈希，续接时从原文重新提取并校验阶段定义。实际保存记录只收录用户提供或确认的已执行内容，不复制模板中的全部参考步骤与空表。使用嵌入式模板需配套含此读取能力的 workflow 版本。
 
 结构示例见 [workflow-structure.example.yaml](../assets/workflow-structure.example.yaml)。它只描述用户给出的阶段和记录入口，没有实验操作参数，也没有声明任何安全暂停条件；真实方法和继续依据必须来自用户的实际规程。
 

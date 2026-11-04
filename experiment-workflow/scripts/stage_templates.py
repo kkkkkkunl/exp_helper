@@ -4,6 +4,7 @@ import argparse
 import copy
 import json
 import math
+import re
 from pathlib import Path
 import _common as C
 
@@ -68,14 +69,40 @@ def validate(data):
     return data
 
 
+def parse_content(content):
+    """Read standalone YAML or one explicitly marked YAML fence in Markdown."""
+    blocks = []
+    fence = None
+    marked = False
+    lines = []
+    for line in content.splitlines():
+        if fence is not None:
+            if re.fullmatch(r' {0,3}' + re.escape(fence[0]) + r'{' + str(len(fence)) + r',}[ \t]*', line):
+                if marked: blocks.append('\n'.join(lines))
+                fence, marked, lines = None, False, []
+            elif marked:
+                lines.append(line)
+            continue
+        match = re.fullmatch(r' {0,3}(`{3,}|~{3,})(.*)', line)
+        if match:
+            fence = match[1]
+            marked = match[2].strip() == 'yaml experiment-workflow'
+    if marked:
+        raise C.SkillError('Markdown 阶段 YAML 代码块未闭合')
+    if len(blocks) > 1:
+        raise C.SkillError('Markdown 只能包含一个 yaml experiment-workflow 代码块')
+    return validate(C._yamlish.loads(blocks[0] if blocks else content))
+
+
 def load(p, config):
     path = (p.root / str(config['path'])).resolve()
     if not path.is_file(): raise C.SkillError(f'模板不存在：{path}')
     content = path.read_text(encoding='utf-8')
     fmt = config.get('format', 'plain')
     if fmt not in ('plain', 'staged'): raise C.SkillError('未知模板格式')
-    data = validate(C._yamlish.loads(content)) if fmt == 'staged' else None
+    data = parse_content(content) if fmt == 'staged' else None
     return {'name': config.get('name'), 'format': fmt, 'version': str(config.get('version', 'unspecified')),
+            'experiment_skill': config.get('experiment_skill'),
             'source': path.relative_to(p.root).as_posix() if path.is_relative_to(p.root) else str(path),
             'sha256': C.sha256_text(content), 'content': content, 'data': data}
 
@@ -96,7 +123,7 @@ def freeze(p, eid, template):
             raise C.SkillError('已有模板快照与同哈希内容不一致')
     else: C.atomic_write_text(path, C.json_text(template))
     return {k: template[k] for k in ('name', 'format', 'version', 'source', 'sha256')} | {
-        'path': path.relative_to(p.root).as_posix()}
+        'path': path.relative_to(p.root).as_posix(), 'experiment_skill': template.get('experiment_skill')}
 
 
 def frozen(p, snapshot):
@@ -107,8 +134,10 @@ def frozen(p, snapshot):
         raise C.SkillError('模板快照内容校验失败')
     if any(template[k] != snapshot[k] for k in ('name', 'version', 'format', 'source')):
         raise C.SkillError('模板快照元信息校验失败')
+    if 'experiment_skill' in snapshot and template.get('experiment_skill') != snapshot['experiment_skill']:
+        raise C.SkillError('模板快照技能绑定校验失败')
     if template['format'] == 'staged':
-        parsed = validate(C._yamlish.loads(template['content']))
+        parsed = parse_content(template['content'])
         if parsed != template['data']: raise C.SkillError('模板解析内容与原文不一致')
     return template
 

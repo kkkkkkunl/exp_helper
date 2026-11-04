@@ -11,6 +11,9 @@ method_templates: []
 # 阶段模板条目增加 format: staged；普通模板为 plain 或省略。
 analysis_skill_repository: skills/analysis
 analysis_map: []
+experiment_skill_map: []
+# experiment_skill_map 每项含 experiment_type 与 skill；模板可配置 experiment_skill。
+# 模板只提供流程与输入记录结构，计算由对应技能承担；不因此迁移现有模板。
 # analysis_map 只填索引中的名称，路径由 skills/analysis/index.json 提供。
 units:
   convert:

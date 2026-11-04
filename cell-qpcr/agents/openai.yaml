@@ -1,0 +1,3 @@
+interface:
+  display_name: "细胞 RT-qPCR"
+  short_description: "按实验阶段计算 RT、稀释、三级 mix 并核对样本、板位与结果分析交接"

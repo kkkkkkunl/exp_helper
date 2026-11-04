@@ -88,6 +88,15 @@ def main() -> None:
     p_disp.add_argument("--experiment-type", default=None)
     p_disp.add_argument("--data-type", default=None)
 
+    p_activate = sub.add_parser('activate', help='实验确定后只读加载对应 skill，不创建实验')
+    p_activate.add_argument('--project')
+    p_activate.add_argument('--experiment-type')
+    p_activate.add_argument('--template')
+    p_activate.add_argument('--plan', help='明确选定的用户方案名称；没有配置模板时使用')
+    p_activate.add_argument('--skill')
+    p_activate.add_argument('--experiment')
+    p_activate.add_argument('--started', action='store_true', help='用户已明确开始或继续')
+
     args = parser.parse_args()
     try:
         if args.cmd == "find":
@@ -105,6 +114,20 @@ def main() -> None:
                 C.die("配置校验失败", code="invalid_config", problems=problems, ok_to_run=False)
             C.ok(problems=problems, ok_to_run=not problems,
                  message="配置可用" if not problems else "存在配置问题，需先与用户确认")
+        elif args.cmd == 'activate':
+            import experiment_skills as E
+            import stage_templates as T
+            import workflow as W
+            state = W.peek_state(project, args.experiment) if args.experiment else None
+            if state and state.get('template_snapshot'):
+                template = T.frozen(project, state['template_snapshot'])
+            elif args.plan:
+                template = {'name': args.plan}
+            else:
+                template = T.select(project, args.template)
+            result = E.activate(project, args.experiment_type or (state or {}).get('experiment_type'),
+                                template, args.skill, args.started, state)
+            C.ok(**{k: v for k, v in result.items() if k != 'package'})
         elif args.cmd == "template":
             if args.name:
                 tpl = project.template_by_name(args.name)

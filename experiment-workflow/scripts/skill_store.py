@@ -64,6 +64,7 @@ def metadata(directory, root):
     if not front.get('description'):
         raise C.SkillError('skill 缺少 description')
     return {'name': name, 'description': front['description'],
+            'kind': front.get('kind', 'analysis'), 'experiment_types': front.get('experiment_types') or [],
             'input_types': front.get('input_types') or [], 'version': str(front.get('version') or 'unspecified'),
             'path': path.relative_to(root).as_posix(), 'sha256': C.sha256_file(path)}
 

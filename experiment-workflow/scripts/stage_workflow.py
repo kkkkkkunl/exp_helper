@@ -14,6 +14,8 @@ import stage_templates as T
 import calendar_bridge as B
 import allocate_id as A
 import inventory as I
+import experiment_skills as E
+import record_history as H
 
 
 def digest(value): return C.sha256_text(json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False))
@@ -35,6 +37,9 @@ def template_for(p, draft, state):
         if draft.get('template') and draft['template'] != template['name'] and draft['action'] != 'upgrade':
             raise C.SkillError('继续实验不得静默切换模板')
         return template
+    if draft.get('plan'):
+        return {'name': draft['plan'], 'format': 'plain', 'version': 'user-provided',
+                'source': 'user', 'content': draft['plan'], 'sha256': C.sha256_text(draft['plan']), 'data': None}
     # Old ordinary records do not acquire a staged template from a changed project default.
     if draft.get('experiment') and not draft.get('template'): return None
     return T.select(p, draft.get('template'))
@@ -47,6 +52,7 @@ def _sample_ids(draft, state):
     result = set(state.get('stage_progress', {}))
     for raw in draft.get('samples', []): result.add(raw if isinstance(raw, str) else raw['id'])
     result.update(op['sample'] for op in draft.get('operations', []))
+    result.update(item['sample'] for item in draft.get('calculations', []))
     return sorted(result)
 
 
@@ -301,6 +307,18 @@ def preview(p, draft):
         raise C.SkillError('阶段操作需要显式选择阶段模板；普通记录可提供 method_text')
     if draft.get('method_text'): method_lines.append(draft['method_text'])
     text = _insert(text, '## 实验方案', '\n'.join(method_lines))
+    computed = E.prepare(p, draft, state, template)
+    if template and template['format'] == 'staged':
+        for calculation in state['calculations'].values():
+            definition = T.stage(template, calculation['stage'])
+            if not any(step['id'] == calculation['step'] for step in definition['steps']):
+                raise C.SkillError('计算关联了未知模板步骤')
+    if state['calculations']:
+        section = E.render(state['calculations'])
+        if re.search(r'^## 上样计算\s*$', text, re.M):
+            text = re.sub(r'^## 上样计算\s*\n.*?(?=^## |\Z)', lambda m: section + '\n\n', text, flags=re.M | re.S)
+        else:
+            text = text.replace('## 结果', section + '\n\n## 结果', 1)
     if draft['action'] == 'pause':
         state['segments'].append({'action_id': draft['action_id'], 'status': 'completed', 'steps': copy.deepcopy(draft.get('operations', []))})
     if draft['action'] == 'pause' or state['followups']:
@@ -326,8 +344,11 @@ def preview(p, draft):
     # Bind the complete current state, record, sample snapshots, template content and action.
     token = digest({'draft': draft, 'state': state_before, 'record': C.sha256_file(old_record) if old_record.is_file() else None,
                     'samples': sample_hashes, 'template': (template or {}).get('sha256'),
-                    'inventory': inventory_plan['hash'] if inventory_plan else None})
+                    'inventory': inventory_plan['hash'] if inventory_plan else None,
+                    'skill': (computed['package'] or {}).get('sha256'), 'calculations': state['calculations']})
     return {'preview_hash': token, 'record': text, 'state': state, 'template': template,
+            'skill': computed['resolution'], 'skill_upgrade': computed['upgrade'],
+            'calculations': list(state['calculations'].values()), '_skill_package': computed['package'],
             'inventory': inventory_plan, 'conditions': conditions,
             'next_action': 'resolve_conditions' if conditions else 'review_and_confirm',
             'prompts': prompts(state, template, sample_data) if template and template['format'] == 'staged' else [],
@@ -350,6 +371,9 @@ def save(p, draft, preview_hash, confirmed_by, inventory_hash=None):
     eid = draft.get('experiment') or A.allocate_experiment(p, reservation_key=action_id)
     state = prepared['state']; state['experiment'] = eid
     state['template_snapshot'] = T.freeze(p, eid, prepared['template'])
+    skill_writes = {}
+    if prepared['_skill_package']:
+        state['skill_snapshot'], skill_writes = E.snapshot_writes(p, eid, prepared['_skill_package'])
     text = prepared['record'].replace('# pending-experiment\n', f'# {eid}\n', 1)
     # New follow-up identity must use the allocated experiment id, not preview placeholder.
     if not draft.get('experiment'):
@@ -383,9 +407,11 @@ def save(p, draft, preview_hash, confirmed_by, inventory_hash=None):
                'inventory_snapshots': (prepared['inventory'] or {}).get('snapshots'),
                'status': 'record_saved' if draft.get('inventory_items') else 'done'}
     target = p.experiment_dir(eid) / C.RECORD_NAME
-    writes = {raw_path: draft['raw_input'], target: text, W.state_path(p, eid): C.json_text(state),
-              registry_path: C.json_text(registry), path: C.json_text(receipt)}
-    if target.exists(): writes[p.experiment_dir(eid) / C.STATE_DIR / 'record-history' / (C.sha256_file(target) + '.md')] = target.read_text(encoding='utf-8')
+    writes = H.prepare(p, eid, state, target.read_text(encoding='utf-8') if target.exists() else None,
+                       text, action_id, draft.get('reason') or (draft.get('skill_upgrade') or {}).get('reason') or draft['raw_input'])
+    writes.update(skill_writes)
+    writes.update({raw_path: draft['raw_input'], target: text, W.state_path(p, eid): C.json_text(state),
+                   registry_path: C.json_text(registry), path: C.json_text(receipt)})
     manifest = p.experiment_dir(eid) / '归档清单.json'
     if manifest.exists(): writes[p.experiment_dir(eid) / C.STATE_DIR / 'archive-history' / (C.sha256_file(manifest) + '.json')] = manifest.read_text(encoding='utf-8')
     if draft['action'] == 'correct':
@@ -434,7 +460,10 @@ def resume(p, eid):
     state = W.peek_state(p, eid)
     template = T.frozen(p, state['template_snapshot']) if state['template_snapshot'] else None
     sample_data = {sid: C.load_sample(p, sid)[1] for sid in state['stage_progress']}
+    skill = E.activate(p, state.get('experiment_type'), template, started=True, state=state)
     return {'state': state, 'template': template, 'followups': list(state['followups'].values()),
+            'skill': {k: v for k, v in skill.items() if k != 'package'},
+            'calculations': list(state.get('calculations', {}).values()),
             'prompts': prompts(state, template, sample_data) if template and template['format'] == 'staged' else [],
             'guidance': '依据已保存步骤和样品继续条件提示下一步；日历排期不是实际执行证据'}
 
@@ -458,7 +487,7 @@ def main():
             else:
                 with C.FileLock(p.state / 'workflow.lock'):
                     result = save(p, data, args.preview_hash, args.confirmed_by, args.inventory_hash)
-        C.ok(result=result)
+        C.ok(result={k: v for k, v in result.items() if not k.startswith('_')})
     except (C.SkillError, ValueError, OSError, KeyError, TypeError) as exc: C.die(str(exc), code='stage_error')
 
 

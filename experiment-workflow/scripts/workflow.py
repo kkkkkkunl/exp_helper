@@ -4,11 +4,13 @@ import argparse
 import json
 import re
 import copy
+import uuid
 from datetime import date
 from pathlib import Path
 import _common as C
 import allocate_id
 import _record_metadata as metadata
+import record_history as H
 
 STATE_VERSION = 4
 
@@ -17,7 +19,9 @@ def defaults(state):
     for key, value in {'template_snapshot': None, 'stage_progress': {}, 'attempts': [],
                        'segments': [], 'confirmations': [], 'followups': {}, 'corrections': [],
                        'review_links': [], 'actions': {}, 'actual_date': None,
-                       'execution': {'status': 'open'}, 'archive_request': None}.items():
+                       'execution': {'status': 'open'}, 'archive_request': None,
+                       'skill_snapshot': None, 'experiment_type': None, 'calculations': {},
+                       'calculation_changes': [], 'record_history': []}.items():
         state.setdefault(key, copy.deepcopy(value))
     return state
 
@@ -61,6 +65,8 @@ def recover_actions(p):
 
 
 def action_transaction(p, writes, deletes=()):
+    if (p.state / 'workflow-transaction.json').exists():
+        raise C.SkillError('已有保存事务待恢复，不得覆盖其动作日志')
     entries = []
     for path, text in writes.items():
         path = Path(path).resolve()
@@ -134,21 +140,27 @@ def properties(state):
 def sync_record_properties(p, eid, state):
     target = p.experiment_dir(eid) / C.RECORD_NAME
     record = state.get('record')
-    if not record or not target.is_file(): return
+    if not record or not target.is_file(): return {}
     before = C.sha256_file(target)
     text = target.read_text(encoding='utf-8')
     status, at = properties(state)
     updated = metadata.render(text, status, at, important=state.get('important'))
-    if updated != text: C.atomic_write_text(target, updated)
+    writes = H.prepare(p, eid, state, text, updated, 'properties-' + uuid.uuid4().hex,
+                       '授权工作流动作同步结果完成或重要性属性')
+    if updated != text: writes[target] = updated
     if before == record.get('sha256'):
-        record['sha256'] = C.sha256_file(target)
+        record['sha256'] = C.sha256_text(updated)
     else:
         record['stale'] = True  # never adopt unrelated manual edits as a generated baseline
+    return writes
 
 
-def archive_files(base):
-    return [f for f in base.rglob('*') if f.is_file()
+def archive_files(base, p=None, state=None):
+    files = [f for f in base.rglob('*') if f.is_file()
             and C.STATE_DIR not in f.relative_to(base).parts and f.name != '归档清单.json']
+    if p is not None:
+        files.extend(H.files(p, state['experiment'], state, validate=True))
+    return files
 
 
 def save_state(p, eid, state, invalidate_archive=True):
@@ -156,16 +168,17 @@ def save_state(p, eid, state, invalidate_archive=True):
     if invalidate_archive:
         state['archived'] = False
         state['archived_at'] = None
-    sync_record_properties(p, eid, state)
-    C.atomic_write_text(state_path(p, eid), C.json_text(state))
+    writes = sync_record_properties(p, eid, state)
+    writes[state_path(p, eid)] = C.json_text(state)
     manifest = p.experiment_dir(eid) / '归档清单.json'
     if invalidate_archive and manifest.is_file():
         dest = p.experiment_dir(eid) / C.STATE_DIR / 'archive-history' / (C.sha256_file(manifest)+'.json')
-        C.atomic_write_text(dest, manifest.read_text(encoding='utf-8'))
-        manifest.unlink()
+        writes[dest] = manifest.read_text(encoding='utf-8')
+    action_transaction(p, writes, deletes=[manifest] if invalidate_archive and manifest.is_file() else [])
 
 
 def read_state(p, eid):
+    recover_actions(p)
     path = state_path(p, eid)
     if not path.is_file(): raise C.SkillError('请先 start 保存原始输入')
     state = json.loads(path.read_text(encoding='utf-8'))
@@ -223,8 +236,11 @@ def read_state(p, eid):
             manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
             archive_changed = any(changed(p, e) for e in manifest['files'])
             expected = {str(local_path(p, e['path']).resolve()) for e in manifest['files']}
-            actual = {str(f.resolve()) for f in archive_files(p.experiment_dir(eid))}
-            archive_changed |= expected != actual
+            try:
+                actual = {str(f.resolve()) for f in archive_files(p.experiment_dir(eid), p, state)}
+                archive_changed |= expected != actual
+            except C.SkillError:
+                archive_changed = True
         if archive_changed:
             state['archive_invalidated'] = '归档后材料变化，需重新归档'
             dirty = True
@@ -290,18 +306,22 @@ def write_record(p, eid, source, approve_current_hash=None, affects_results=None
         if len(state['result_tasks']) > 1:
             raise C.SkillError('结果章节变化但无法确定任务范围；核对后传 --affects-results <受影响任务ID>，不重置全部任务')
         invalidate_results(state, list(state['result_tasks']))
-    if old is not None:
-        backup = p.experiment_dir(eid) / C.STATE_DIR / 'record-history' / (C.sha256_file(target)+'.md')
-        C.atomic_write_text(backup, old)
     status, at = properties(state)
     text = metadata.render(text, status, at, previous=old, important=state.get('important'))
-    C.atomic_write_text(target, text)
-    state['record'] = {'path': stored_path(p, target), 'sha256': C.sha256_file(target), 'stale': False,
+    writes = H.prepare(p, eid, state, old, text, 'record-' + uuid.uuid4().hex, '明确保存合并后的实验记录')
+    state['record'] = {'path': stored_path(p, target), 'sha256': C.sha256_text(text), 'stale': False,
                        'results_hash': C.sha256_text(result_section(text))}
     state['actual_date'] = actual_date_from_record(text) or state.get('actual_date')
-    state['record_round'] += 1
-    state.update(inventory='review_pending', inventory_reason=None)
-    save_state(p, eid, state)
+    if old != text:
+        state['record_round'] += 1
+        state.update(inventory='review_pending', inventory_reason=None)
+    state.update(updated=C.ts_now(), archived=False, archived_at=None)
+    writes[target] = text
+    writes[state_path(p, eid)] = C.json_text(state)
+    manifest = p.experiment_dir(eid) / '归档清单.json'
+    if manifest.is_file():
+        writes[p.experiment_dir(eid) / C.STATE_DIR / 'archive-history' / (C.sha256_file(manifest) + '.json')] = manifest.read_text(encoding='utf-8')
+    action_transaction(p, writes, deletes=[manifest] if manifest.is_file() else [])
     return {**state['record'], 'record_round': state['record_round'],
             'next_action': 'inventory_review', 'message': '自动读取库存模块，核查本轮样品变化；无变化直接结束，不询问是否手动管理库存'}
 
@@ -435,7 +455,7 @@ def _finalize(p, eid):
         if problems: raise C.SkillError('；'.join(problems))
         at = C.now_cn().strftime('%Y-%m-%dT%H:%M:%S')
         manifest = {'experiment': eid, 'archived_at': at, 'archived': True,
-                    'files': snapshot_files(archive_files(p.experiment_dir(eid)), p),
+                    'files': snapshot_files(archive_files(p.experiment_dir(eid), p, state), p),
                     'analysis': state['analysis'], 'result_tasks': state['result_tasks'],
                     'inventory': state['inventory'], 'issues': state['issues']}
         C.atomic_write_text(p.experiment_dir(eid) / '归档清单.json', C.json_text(manifest))
