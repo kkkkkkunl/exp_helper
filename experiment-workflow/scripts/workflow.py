@@ -11,6 +11,7 @@ import _common as C
 import allocate_id
 import _record_metadata as metadata
 import record_history as H
+import record_format as R
 
 STATE_VERSION = 4
 
@@ -21,7 +22,8 @@ def defaults(state):
                        'review_links': [], 'actions': {}, 'actual_date': None,
                        'execution': {'status': 'open'}, 'archive_request': None,
                        'skill_snapshot': None, 'experiment_type': None, 'calculations': {},
-                       'calculation_changes': [], 'record_history': []}.items():
+                       'calculation_changes': [], 'record_history': [], 'actual_values': [],
+                       'input_resolutions': []}.items():
         state.setdefault(key, copy.deepcopy(value))
     return state
 
@@ -111,7 +113,8 @@ def changed(p, entry):
 def result_section(text):
     body = metadata.split(text)[1]
     found = re.search(r'^## 结果\s*\n(.*?)(?=^## |\Z)', body, re.M | re.S)
-    return (found.group(1) if found else '').strip()
+    section = (found.group(1) if found else '').strip()
+    return re.sub(r'\n[ \t]*\n+', '\n', section)
 
 
 def actual_date_from_record(text):
@@ -285,9 +288,10 @@ def start(p, request_id, input_file, eid=None, affects_results=(), affects_analy
     return {'experiment': eid, 'state': state}
 
 
-def write_record(p, eid, source, approve_current_hash=None, affects_results=None):
+def write_record(p, eid, source, approve_current_hash=None, affects_results=None, migrate=False,
+                 text_override=None, migration_preview_hash=None):
     state = read_state(p, eid)
-    text = Path(source).read_text(encoding='utf-8')
+    text = text_override if text_override is not None else Path(source).read_text(encoding='utf-8')
     for heading in ('## 目的', '## 实验方案', '## 结果', '## 附件'):
         if heading not in text: raise C.SkillError(f'记录缺少 {heading}')
     if eid not in text or '{{' in text or re.search(r'\bTODO\b', text, re.I):
@@ -299,6 +303,11 @@ def write_record(p, eid, source, approve_current_hash=None, affects_results=None
         if approve_current_hash != current:
             raise C.SkillError(f'记录有人工修改；展示合并结果并确认后传 --approve-current-hash {current}')
     old = target.read_text(encoding='utf-8') if target.is_file() else None
+    old_canonical = bool(old and (state.get('record_format') == 'canonical' or R.is_canonical(old)))
+    if old and not old_canonical and R.is_canonical(text) and not migrate:
+        raise C.SkillError('旧格式记录需先预览并明确迁移，不自动重排')
+    if migrate and (not old or old_canonical):
+        raise C.SkillError('仅旧格式记录可显式迁移')
     if affects_results is not None:
         invalidate_results(state, affects_results)
         state.pop('result_scope_unknown', None)
@@ -308,6 +317,10 @@ def write_record(p, eid, source, approve_current_hash=None, affects_results=None
         invalidate_results(state, list(state['result_tasks']))
     status, at = properties(state)
     text = metadata.render(text, status, at, previous=old, important=state.get('important'))
+    if old is None or old_canonical or migrate:
+        R.validate(text, eid)
+        state['record_format'] = 'canonical'
+    if migrate: state['migration_preview_hash'] = migration_preview_hash
     writes = H.prepare(p, eid, state, old, text, 'record-' + uuid.uuid4().hex, '明确保存合并后的实验记录')
     state['record'] = {'path': stored_path(p, target), 'sha256': C.sha256_text(text), 'stale': False,
                        'results_hash': C.sha256_text(result_section(text))}
@@ -475,6 +488,9 @@ def main():
     arg.add_argument('--affects-analysis', nargs='*', default=[])
     sub.add_parser('list')
     sub.add_parser('recover')
+    for name in ('migrate-preview', 'migrate'):
+        arg = sub.add_parser(name); arg.add_argument('--experiment', required=True)
+        if name == 'migrate': arg.add_argument('--preview-hash', required=True)
     for name in ('status', 'record', 'analysis', 'organize', 'inventory', 'issues', 'finalize', 'important'):
         arg = sub.add_parser(name); arg.add_argument('--experiment', required=True)
         if name == 'record':
@@ -499,6 +515,9 @@ def main():
     args = parser.parse_args()
     try:
         p = C.Project(C.find_project_root(args.project))
+        if args.cmd == 'migrate-preview':
+            C.ok(result=R.migration_preview(p, args.experiment))
+            return
         with C.FileLock(p.state / 'workflow.lock'):
             recover_actions(p)
             if args.cmd == 'start':
@@ -509,6 +528,16 @@ def main():
             elif args.cmd == 'status': result = read_state(p, args.experiment)
             elif args.cmd == 'record':
                 result = write_record(p, args.experiment, args.file, args.approve_current_hash, args.affects_results)
+            elif args.cmd == 'migrate':
+                state = read_state(p, args.experiment)
+                if state.get('migration_preview_hash') == args.preview_hash:
+                    result = {'experiment': args.experiment, 'noop': True, 'record': state.get('record')}
+                else:
+                    prepared = R.migration_preview(p, args.experiment)
+                    if prepared['preview_hash'] != args.preview_hash:
+                        raise C.SkillError('旧记录或迁移预览已变化，请重新预览并确认')
+                    result = write_record(p, args.experiment, None, approve_current_hash=prepared['source_hash'], migrate=True,
+                                          text_override=prepared['record'], migration_preview_hash=args.preview_hash)
             elif args.cmd == 'analysis':
                 result = update_analysis(p, args.experiment, args.task, args.status, args.skill,
                     args.skill_version, args.inputs, args.outputs, args.params, args.reason)

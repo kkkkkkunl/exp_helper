@@ -11,6 +11,7 @@ import allocate_id as A
 import inventory as I
 import project as P
 import workflow as W
+import record_format as Format
 import results as R
 
 
@@ -155,7 +156,8 @@ class Regression(unittest.TestCase):
 
     def record(self):
         path=self.root/'draft.md'
-        path.write_text(f'# {self.eid}\n## 目的\n测试\n## 实验方案\n实际操作\n## 结果\n无分析数值\n## 附件\n无',encoding='utf-8')
+        path.write_text(Format.render(self.eid, project=self.root.name, purpose='测试',
+                                     method='实际操作', results='无分析数值', attachments='无'), encoding='utf-8')
         return path
 
     def test_resume_and_manual_edit_guard(self):

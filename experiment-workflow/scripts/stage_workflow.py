@@ -6,7 +6,7 @@ sys.dont_write_bytecode = True
 import copy
 import json
 import re
-from datetime import date
+from datetime import date, datetime, timedelta
 from pathlib import Path
 import _common as C
 import workflow as W
@@ -16,9 +16,29 @@ import allocate_id as A
 import inventory as I
 import experiment_skills as E
 import record_history as H
+import record_format as R
 
 
 def digest(value): return C.sha256_text(json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False))
+
+
+def _check_relative_time(value, raw_input, label):
+    evidence = value.get('time_evidence')
+    if not evidence: return True
+    raw = str(value.get('raw', '')).strip()
+    if not raw or raw not in raw_input or not evidence.get('candidate') or not evidence.get('read_at') or evidence.get('estimated') is not True:
+        raise C.SkillError(f'{label} 相对时间缺少原话、北京时间候选、读取时刻或估计依据')
+    if not re.fullmatch(r'\d{2}:\d{2}', str(evidence['candidate'])):
+        raise C.SkillError(f'{label} 北京时间候选须为 HH:mm')
+    try: read_at = datetime.fromisoformat(str(evidence['read_at']))
+    except ValueError as exc: raise C.SkillError(f'{label} 北京时间读取时刻无效') from exc
+    if read_at.utcoffset() != timedelta(hours=8): raise C.SkillError(f'{label} 读取时刻须使用北京时间 +08:00')
+    if evidence.get('confirmed') is not True: return False
+    candidate = str(value.get('value'))
+    if not re.fullmatch(r'\d{2}:\d{2}', candidate): raise C.SkillError(f'{label} 确认后的时间须为 HH:mm')
+    hour, minute = map(int, candidate.split(':'))
+    if hour > 23 or minute > 59: raise C.SkillError(f'{label} 确认时间无效')
+    return True
 
 
 def fresh(eid):
@@ -109,6 +129,9 @@ def _advance(p, draft, state, template, sample_data):
         current['conditions'] = unmet
         conditions.extend(f'{sample}/{stage_id}: {key}' for key in unmet)
         values, missing = T.values(p, step, op.get('values', {}), op.get('confirmed_fields', []))
+        for fid, value in list(values.items()):
+            if not _check_relative_time(value, draft['raw_input'], fid):
+                values.pop(fid); missing.append(fid)
         old = current['steps'].get(step_id)
         info = {'executed': op['executed'], 'values': values, 'missing': missing,
                 'complete': op['executed'] and not missing, 'source': draft['action_id']}
@@ -124,7 +147,7 @@ def _advance(p, draft, state, template, sample_data):
             for key, value in values.items():
                 label = next(f['label'] for f in step['fields'] if f['id'] == key)
                 actual = {'unmeasured': '未测定', 'not_applicable': '不适用'}.get(value.get('status')) or str(value['value']) + (' ' + str(value['unit']) if value.get('unit') else '')
-                rendered.append(f'{label}：{actual}')
+                rendered.append(f'{label}｜{actual}')
             prefix = '更正记载：' if draft['action'] == 'correct' else ''
             lines.append(f'- {prefix}{definition["title"]} / {step["title"]}；样品 [[{sample}]]；' + '；'.join(rendered))
     for review in draft.get('resolve_reviews', []):
@@ -172,6 +195,71 @@ def prompts(state, template, sample_data):
                     out.append({'sample': sample, 'stage': sid, 'choose_next_stage': definition['next'],
                                 'guidance': '核对或选择下一阶段的实际输入样品，不把来源样品自动当作新产物'})
     return out
+
+
+def question_plan(stage_prompts, conflicts=(), actual_values=(), operations=()):
+    """Current blocking questions for the host UI; later steps stay deferred."""
+    questions = []
+    for item in conflicts:
+        if item.get('resolved') is True: continue
+        field = str(item.get('field', '')).strip()
+        values = item.get('values', [])
+        if not field or not isinstance(values, list): raise C.SkillError('冲突须列明字段和候选值')
+        options = [str(value) for value in values if str(value).strip()]
+        questions.append({'kind': 'choice' if 2 <= len(options) <= 3 else 'text', 'field': field,
+                          'title': f'{field} 有冲突，请确认实际值' + (f'（已给出：{"、".join(options)}）' if len(options) > 3 else ''),
+                          'options': options if 2 <= len(options) <= 3 else []})
+    for item in actual_values:
+        evidence = item.get('time_evidence') or {}
+        if evidence and evidence.get('confirmed') is not True:
+            candidate = evidence.get('candidate')
+            questions.append({'kind': 'choice' if candidate else 'text', 'field': item.get('label'),
+                              'title': f'请确认{item.get("label")}的北京时间',
+                              'options': [candidate] if candidate else []})
+    for op in operations:
+        for field, value in op.get('values', {}).items():
+            evidence = value.get('time_evidence') if isinstance(value, dict) else None
+            if evidence and evidence.get('confirmed') is not True:
+                candidate = evidence.get('candidate')
+                questions.append({'kind': 'choice' if candidate else 'text', 'field': field,
+                                  'title': f'请确认{field}的北京时间',
+                                  'options': [candidate] if candidate else []})
+    for prompt in stage_prompts:
+        prefix = '/'.join(str(prompt.get(key)) for key in ('sample', 'stage', 'step') if prompt.get(key))
+        for condition in prompt.get('conditions', []):
+            questions.append({'kind': 'text', 'field': condition, 'title': f'{prefix}：请核对 {condition}', 'options': []})
+        if prompt.get('choose_next_stage'):
+            questions.append({'kind': 'choice', 'field': 'next_stage',
+                              'title': f'{prefix}：请选择实际后续阶段', 'options': prompt['choose_next_stage']})
+        for field in prompt.get('fields', []):
+            if field.get('required'):
+                questions.append({'kind': 'text', 'field': field['id'],
+                                  'title': f'{prefix}：请提供{field["label"]}', 'options': []})
+    unique, seen = [], set()
+    for question in questions:
+        key = (question['field'], question['title'])
+        if key not in seen: unique.append(question); seen.add(key)
+    return {'questions': unique[:3], 'remaining': len(unique) - min(len(unique), 3),
+            'fallback': [f'{i}. {q["title"]}' for i, q in enumerate(unique[:3], 1)]}
+
+
+def actual_lines(draft, state):
+    lines, pending = [], []
+    for item in draft.get('actual_values', []):
+        if not isinstance(item, dict) or item.get('source') != 'user':
+            raise C.SkillError('单项实际值须来自用户提供或确认')
+        label, raw = str(item.get('label', '')).strip(), str(item.get('raw', '')).strip()
+        value = item.get('value')
+        if not label or not raw or raw not in draft['raw_input'] or value is None or '\n' in label:
+            raise C.SkillError('单项实际值缺少标签、原话或已确认值')
+        if not _check_relative_time(item, draft['raw_input'], label):
+            pending.append(label); continue
+        display = str(value) + (' ' + str(item['unit']) if item.get('unit') else '')
+        lines.append(f'{label}｜{display}')
+        if not any(x.get('action_id') == draft['action_id'] and x.get('label') == label
+                   for x in state.setdefault('actual_values', [])):
+            state['actual_values'].append(dict(item, action_id=draft['action_id']))
+    return lines, pending
 
 
 def refresh_followups(state, eid, template, entry=None):
@@ -266,9 +354,15 @@ def preview(p, draft):
         raise C.SkillError('保存动作须为 confirm/pause/final_results/correct/upgrade')
     if not isinstance(draft.get('action_id'), str) or not draft['action_id'].strip() or not draft.get('raw_input'):
         raise C.SkillError('动作需要稳定 action_id 和用户原话 raw_input')
+    for conflict in draft.get('conflicts', []):
+        if conflict.get('resolved') is True and not str(conflict.get('value', '')).strip():
+            raise C.SkillError('冲突标记为已解决时须给出经确认的实际值')
     eid = draft.get('experiment') or 'pending-experiment'
     state = W.peek_state(p, eid) if draft.get('experiment') else fresh(eid)
     state_before = copy.deepcopy(state)
+    for conflict in draft.get('conflicts', []):
+        if conflict.get('resolved') is True:
+            state.setdefault('input_resolutions', []).append(dict(conflict, action_id=draft['action_id']))
     template = template_for(p, draft, state)
     actual_date = draft.get('actual_date', state.get('actual_date'))
     if actual_date:
@@ -281,10 +375,10 @@ def preview(p, draft):
         path, data, _ = C.load_sample(p, sid)
         sample_data[sid] = data; sample_hashes[sid] = C.sha256_file(path)
     old_record = p.experiment_dir(eid) / C.RECORD_NAME
-    text = old_record.read_text(encoding='utf-8') if old_record.is_file() else (
-        f'# {eid}\n\n实际实验日期：{actual_date or ""}\n\n## 目的\n{draft.get("purpose", "")}\n\n'
-        '## 实验方案\n### 参考方案\n\n### 实验方法\n\n## 结果\n\n## 附件\n')
-    if template and not state_before.get('template_snapshot'):
+    is_new = not old_record.is_file()
+    text = old_record.read_text(encoding='utf-8') if not is_new else R.render(
+        eid, actual_date=actual_date, project=p.root.name, purpose=draft.get('purpose'), template=template)
+    if template and not state_before.get('template_snapshot') and not is_new:
         text = _insert(text, '## 实验方案', f'参考模板：{template["name"]}；版本：{template["version"]}；来源：{template["source"]}')
     if draft.get('actual_date') and state_before.get('actual_date') != actual_date:
         lines = []
@@ -305,6 +399,8 @@ def preview(p, draft):
     method_lines, conditions = _advance(p, draft, state, template, sample_data) if template and template['format'] == 'staged' else ([], [])
     if draft.get('operations') and (not template or template['format'] != 'staged'):
         raise C.SkillError('阶段操作需要显式选择阶段模板；普通记录可提供 method_text')
+    value_lines, pending_times = actual_lines(draft, state)
+    method_lines.extend(value_lines)
     if draft.get('method_text'): method_lines.append(draft['method_text'])
     text = _insert(text, '## 实验方案', '\n'.join(method_lines))
     computed = E.prepare(p, draft, state, template)
@@ -331,6 +427,9 @@ def preview(p, draft):
     status, at = W.properties(state)
     text = W.metadata.render(text, status, at, previous=old_record.read_text(encoding='utf-8') if old_record.is_file() else None,
                              important=state.get('important'))
+    if is_new or R.is_canonical(old_record.read_text(encoding='utf-8')):
+        R.validate(text, eid)
+        state['record_format'] = 'canonical'
     if '{{' in text or re.search(r'\bTODO\b', text, re.I): raise C.SkillError('正式记录不能包含模板占位符或 TODO')
     if draft['action'] == 'correct' and not draft.get('reason'): raise C.SkillError('更正缺少依据')
     if W.result_section(text) != (W.result_section(old_record.read_text(encoding='utf-8')) if old_record.is_file() else ''):
@@ -346,12 +445,14 @@ def preview(p, draft):
                     'samples': sample_hashes, 'template': (template or {}).get('sha256'),
                     'inventory': inventory_plan['hash'] if inventory_plan else None,
                     'skill': (computed['package'] or {}).get('sha256'), 'calculations': state['calculations']})
+    stage_prompts = prompts(state, template, sample_data) if template and template['format'] == 'staged' else []
+    questions = question_plan(stage_prompts, draft.get('conflicts', []), draft.get('actual_values', []), draft.get('operations', []))
     return {'preview_hash': token, 'record': text, 'state': state, 'template': template,
             'skill': computed['resolution'], 'skill_upgrade': computed['upgrade'],
             'calculations': list(state['calculations'].values()), '_skill_package': computed['package'],
             'inventory': inventory_plan, 'conditions': conditions,
-            'next_action': 'resolve_conditions' if conditions else 'review_and_confirm',
-            'prompts': prompts(state, template, sample_data) if template and template['format'] == 'staged' else [],
+            'next_action': 'resolve_conditions' if conditions or questions['questions'] else 'review_and_confirm',
+            'prompts': stage_prompts, 'questions': questions, 'pending_times': pending_times,
             'remaining': list(state['followups'].values())}
 
 
@@ -365,6 +466,11 @@ def save(p, draft, preview_hash, confirmed_by, inventory_hash=None):
         if receipt['draft_hash'] != digest(draft): raise C.SkillError('同动作标识不能重解释为其他操作')
         return continue_action(p, receipt)
     prepared = preview(p, draft)
+    pending_operation_times = any(isinstance(value, dict) and value.get('time_evidence') and
+                                  value['time_evidence'].get('confirmed') is not True
+                                  for op in draft.get('operations', []) for value in op.get('values', {}).values())
+    if any(item.get('resolved') is not True for item in draft.get('conflicts', [])) or prepared['pending_times'] or pending_operation_times:
+        raise C.SkillError('阻断性冲突或相对时间尚未确认，不能保存为事实')
     if prepared['preview_hash'] != preview_hash: raise C.SkillError('预览后记录、样品或模板发生变化，请重读并确认')
     if inventory_hash is not None and (not prepared['inventory'] or prepared['inventory']['hash'] != inventory_hash):
         raise C.SkillError('库存确认与已展示清单不符')
@@ -374,7 +480,8 @@ def save(p, draft, preview_hash, confirmed_by, inventory_hash=None):
     skill_writes = {}
     if prepared['_skill_package']:
         state['skill_snapshot'], skill_writes = E.snapshot_writes(p, eid, prepared['_skill_package'])
-    text = prepared['record'].replace('# pending-experiment\n', f'# {eid}\n', 1)
+    text = prepared['record'].replace('pending-experiment', eid)
+    if state.get('record_format') == 'canonical': R.validate(text, eid)
     # New follow-up identity must use the allocated experiment id, not preview placeholder.
     if not draft.get('experiment'):
         state['followups'] = {}

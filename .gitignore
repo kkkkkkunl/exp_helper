@@ -46,3 +46,4 @@ __pycache__/
 
 # 日期归档的临时验收证据
 /dist/sub-skill-layout-*/
+/dist/

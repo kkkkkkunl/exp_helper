@@ -18,6 +18,7 @@ import inventory as I
 import stage_workflow as S
 import lineage as L
 import results as R
+import record_format as F
 
 
 def template_data():
@@ -56,7 +57,11 @@ class Lifecycle(unittest.TestCase):
 
     def record(self, results='合成观察。', custom=''):
         path = self.root / 'draft.md'
-        path.write_text(custom + f'# {self.eid}\n## 目的\n结构测试\n## 实验方案\n### 参考方案\n示例\n### 实验方法\n实际记录\n## 结果\n{results}\n## 附件\n', encoding='utf-8')
+        text = F.render(self.eid, project=self.root.name, purpose='结构测试', reference='示例',
+                        method='实际记录', results=results)
+        if custom:
+            text = custom + F.metadata.split(text)[1]
+        path.write_text(text, encoding='utf-8')
         W.write_record(self.p, self.eid, path)
         return self.p.experiment_dir(self.eid) / C.RECORD_NAME
 
@@ -295,6 +300,8 @@ class Lifecycle(unittest.TestCase):
     def test_installed_cli_stdin_preview_has_no_project_writes(self):
         installed = self.root / 'installed'
         shutil.copytree(Path(S.__file__).parent, installed, ignore=shutil.ignore_patterns('__pycache__'))
+        (self.root / 'assets').mkdir(exist_ok=True)
+        shutil.copy2(F.TEMPLATE, self.root / 'assets' / F.TEMPLATE.name)
         sample = self.sample(); draft = self.draft(samples=[sample], operations=[self.operation(sample)])
         before = self.tree()
         result = subprocess.run([sys.executable, '-B', str(installed / 'stage_workflow.py'), '--project', str(self.root),

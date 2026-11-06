@@ -7,6 +7,7 @@
 1. 识别已有实验或新实验。已有实验先 resume；新实验预览阶段不分配编号。使用旧样品开展新实验另建编号，前序操作只链接来源。
 2. 按模板步骤集中提示相关字段。用户自由文本或多步骤输入由会话整理为结构化 values，只追问缺项和冲突；返回的 prompts 提供模板字段与条件依据，不补造流程。
    实验及方案确定后同时遵循 [实验技能模块](experiment-skill-module.md)，按当前步骤从 skill 取得计算规则。模板不执行计算，预览返回 calculations 与技能状态；缺参仅暂停相关计算。
+   预览还返回 `questions.questions` 与编号 `questions.fallback`。宿主优先以问答框一次提出当前步骤最多三个独立的阻断问题；有可靠候选时供选择，其余开放输入。后续依赖问题下一轮再问，已提供值不重问。无问答框时用 fallback 原样集中追问；冲突未解决或相对时间未确认不得保存为事实。
 3. 普通参数回答保留在会话内。不要为了预览在项目中保存草稿 JSON、原话文件、调用 start、分配编号或生成库存计划。可用 Python API 内存对象，或 CLI `--file -` 从标准输入传入 JSON；执行加 `-B` 避免生成字节码文件。
 4. 预览展示完整拟写记录、待补项、真实步骤和具体库存清单。用户确认后才 save，携带该次 preview_hash 和确认来源；若清单已明确获确认，另外携带所展示 inventory.hash。没有清单确认也可保存独立记录，库存保持等待。
 5. 用户说“暂停”：保存已做部分并完成本次阶段收尾，剩余步骤仍未执行，转入日历待办。没有规程依据时不把记录暂停解释为可以直接继续实际操作。
@@ -36,8 +37,12 @@
 | results / result_scope | 本次结果 id、text、files、missing 及明确范围 |
 | submission_kind | 只有 final 才能进入最终结果流程 |
 | important | 可选布尔值；缺失默认普通，已有选择保留 |
+| conflicts | 当前输入存在的字段冲突；列明 field、候选 values，解决后标记 resolved，未解决不得保存 |
+| actual_values | 单项实际值列表：label、value、raw、source=user、可选 unit；相对时间另带 time_evidence，保存原话、北京时间候选、读取时刻、估计性质与确认结果 |
 
 声明未测定或不适用使用 `status: unmeasured/not_applicable`、`source: user`，并满足模板允许类别。操作数据不能单独靠预设生成；缺项记录在交互状态，不把 TODO 或模板占位符放进正文。
+
+对“刚刚完成”等相对时间，先从会话可用北京时间取得 `HH:mm` 候选并用问答框或编号问题请用户确认／改写。`time_evidence` 至少保存 candidate、read_at、estimated: true、confirmed: true；未确认时预览不把候选写入正文。确认后单项正文只写如 `铺板完成时间｜14:55`，不拼取值说明。样本、来源实验、模板版本和计算依据仍保留在各自结构化内容中。
 
 ```text
 py -3.9 -B scripts/stage_workflow.py --project <项目根> preview --file -

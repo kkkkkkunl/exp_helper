@@ -11,6 +11,7 @@ import _common as C
 import workflow as W
 import install as Installer
 import skill_store as Store
+import record_format as Format
 
 
 class V3(unittest.TestCase):
@@ -28,7 +29,10 @@ class V3(unittest.TestCase):
     def draft(self, date='2026-11-01', result='已有测量表', custom=''):
         path = self.root / 'draft.md'
         result += ''.join('\n' + link for link in self.result_links)
-        path.write_text(custom+f'# {self.eid}\n实际日期：{date}\n## 目的\n测量\n## 实验方案\n实际操作\n## 结果\n{result}\n## 附件\n见附件', encoding='utf-8')
+        text = Format.render(self.eid, actual_date=date, project=self.root.name, purpose='测量',
+                             method='实际操作', results=result, attachments='见附件')
+        if custom: text = custom + Format.metadata.split(text)[1]
+        path.write_text(text, encoding='utf-8')
         return path
 
     def record(self, **kw):
@@ -133,7 +137,7 @@ class V3(unittest.TestCase):
     def test_manual_edit_guard_and_unchanged_result_completion(self):
         self.record(); self.complete_results(); self.no_stock(); W.finalize(self.p,self.eid)
         target=self.p.experiment_dir(self.eid)/C.RECORD_NAME
-        target.write_text(target.read_text().replace('实际日期：2026-11-01','实际日期：2026-10-31'))
+        target.write_text(target.read_text().replace('| 实际实验日期 | 2026-11-01 |','| 实际实验日期 | 2026-10-31 |'))
         W.read_state(self.p,self.eid)
         self.assertTrue(self.front()['completed'])
         with self.assertRaises(C.SkillError): self.record()
