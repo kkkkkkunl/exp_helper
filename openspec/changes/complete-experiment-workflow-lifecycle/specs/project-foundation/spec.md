@@ -31,8 +31,19 @@
 - **WHEN** 用户只记录过程且分析技能缺失
 - **THEN** 系统仍能完成记录与相关库存核查，不因无关分析依赖阻塞
 
+### Requirement: Explicit `$exp` entry to the main workflow
+仓库 SHALL 提供名为 `exp` 的薄入口技能，供用户在对话中以 `$exp` 显式进入现有主实验工作流；入口 SHALL 不复制主技能规则，进入后仍按既有条件按需激活实验级技能。现有主技能名称 SHALL 保持可供明确直接调用。安装说明 SHALL 指出入口与主技能的共同定位要求，单独部署入口不得静默指向失效路径。
+
+#### Scenario: Enter with `$exp`
+- **WHEN** 用户在对话中明确调用 `$exp`，随后确定实验类型及方法模板或方案
+- **THEN** 系统进入主工作流并按既有优先级定位当前实验的技能，只加载当前步骤所需内容
+
+#### Scenario: Entry installed without its target
+- **WHEN** `exp` 入口可读，但对应主技能不可定位
+- **THEN** 系统明确报告缺失的主技能，不声称工作流已经启动，也不复制一份可能过期的替代规则
+
 ### Requirement: Activate the experiment skill when the experiment is determined
-用户明确开始或继续某次实验，且实验类型及模板或方案已明确后，系统 SHALL 立即定位并加载对应实验级 skill，按当前步骤使用相关内容，不等待另发计算或结果分析请求。技能定位 SHALL 依次采用用户明确指定、所选模板明确绑定、实验类型匹配；未指定技能且存在多个候选或绑定冲突时 SHALL 展示差异并明确选择。缺失技能 SHALL 暂停依赖它的计算，保留独立记录，不自行替代或下载。
+用户已通过 `$exp` 或现有主技能名称明确进入工作流，且明确开始或继续某次实验、实验类型及模板或方案已明确后，系统 SHALL 立即定位并加载对应实验级 skill，按当前步骤使用相关内容，不等待另发计算或结果分析请求。技能定位 SHALL 依次采用用户明确指定、所选模板明确绑定、实验类型匹配；未指定技能且存在多个候选或绑定冲突时 SHALL 展示差异并明确选择。缺失技能 SHALL 暂停依赖它的计算，保留独立记录，不自行替代或下载。
 
 #### Scenario: Confirm an experiment before measurements are supplied
 - **WHEN** 用户明确按已选方案开始某类实验，但尚未提供上样计算需要的浓度

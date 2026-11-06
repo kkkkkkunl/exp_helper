@@ -14,7 +14,7 @@
 - **THEN** 系统报告具体结构错误，不按该错误路径提示操作
 
 ### Requirement: Templates provide structure while skills provide calculations
-模板 SHALL 提供实验流程、输入及记录字段和可选的实验级技能绑定，计算公式、执行和校验 SHALL 由对应 skill 统一承担。系统 SHALL 支持按已选模板的明确绑定定位技能，不把普通记录字段当作绑定配置。此次更新 SHALL 不修改现有 qPCR 模板、不迁移其已有计算或历史快照；这项暂缓 SHALL 不允许新工作流用旧模板公式替代缺失的 skill。
+方法模板 SHALL 提供实验流程、输入及记录字段和可选的实验级技能绑定，计算公式、执行和校验 SHALL 由对应 skill 统一承担。正式实验记录的章节结构另由记录模板约束，方法模板的全部步骤或空表不得复制为已执行事实。系统 SHALL 支持按已选方法模板的明确绑定定位技能，不把普通记录字段当作绑定配置。此次更新 SHALL 不修改现有 qPCR 模板、不迁移其已有计算或历史快照；这项暂缓 SHALL 不允许新工作流用旧模板公式替代缺失的 skill。
 
 #### Scenario: Start with a template-bound experiment skill
 - **WHEN** 用户确定的模板明确绑定一个实验级技能，且没有优先的明确技能选择

@@ -24,12 +24,49 @@
 - **WHEN** 一次输入已包含多个步骤及部分用量
 - **THEN** 系统整理已有事实，仅询问仍缺少或矛盾的内容
 
+### Requirement: Question UI for blocking gaps and conflicts
+系统 SHALL 对当前步骤阻断性的缺失值和互相冲突的信息优先使用宿主问答框集中核对；可核对的候选值 SHALL 供选择，无法可靠预列的实验数据 SHALL 使用开放输入，不得猜测。系统 SHALL 接受用户自由文本，不重复询问已提供的信息；有依赖的问题按先决条件分轮提出。问答框不可用时 SHALL 以集中、编号的文本问题保留相同核对边界，未解决冲突不得写成既定事实。非阻断性的空白不因本要求变为保存门槛。
+
+#### Scenario: Resolve a missing measurement and a conflict
+- **WHEN** 当前步骤缺少不能可靠推定的浓度，且两条输入给出不同孔数
+- **THEN** 系统用问答框开放输入浓度并让用户选择或改写孔数；已有明确值不重问，冲突解决前不保存任一孔数为事实
+
+#### Scenario: Question UI is unavailable
+- **WHEN** 宿主不能显示问答框而当前步骤仍有阻断性缺项
+- **THEN** 系统集中列出编号问题并等待自由文本，不自动补值或跳过冲突
+
 ### Requirement: Consistent record presentation
 实验记录 SHALL 保留编号、实际日期、目的、实验方案、结果与附件；实验方案包含参考方案来源及实际方法，实际方法只写实际执行。已确认保存的操作前计算 SHALL 在独立标明的计算内容中呈现，不得冒充已执行方法或实测结果。当前材料 SHALL 按实验目录组织，历史版本按项目级 history 规则关联；实验列表按实际日期而非创建编号排序，阶段流程不得破坏既有正文结构。
 
 #### Scenario: Enter an older experiment retrospectively
 - **WHEN** 用户补录早于当前日期的实验
 - **THEN** 记录保留新的固定编号和真实发生日期，列表按实际日期排列，不把创建日期冒充实际日期
+
+### Requirement: Canonical structure for new formal records
+新正式实验记录 SHALL 以 `assets/experiment-record.template.md` 为结构来源，保留元信息、基本信息表及必需顶层章节和“参考方案／实验方法”子章节的名称、层级与顺序；保存前 SHALL 校验这些结构。系统 MAY 在对应章节下增加有事实依据的小节，`## 上样计算` MAY 置于“实验方案”之后、“结果”之前。各章节内容 MAY 为空，不得把模板占位符、说明文字或未知值当作实验事实。旧格式记录 SHALL 在普通编辑中保留原排版，仅在用户明确要求迁移时预览转换并按历史规则保存旧版。
+
+#### Scenario: Save a new record with empty sections
+- **WHEN** 新实验已有确认操作，但目的、结果或附件尚未填写
+- **THEN** 正式记录具有模板规定的结构，空章节保留为空，不插入占位符或虚构数据
+
+#### Scenario: Reject a malformed new record
+- **WHEN** 新记录缺失必需章节，或章节标题层级与顺序不符合模板
+- **THEN** 保存被拒绝并指出具体结构错误
+
+#### Scenario: Edit an older record without migration
+- **WHEN** 用户补充一份旧格式记录且未要求结构迁移
+- **THEN** 系统保留其原排版并应用既有语义与人工修改保护，不自动重排全文
+
+### Requirement: Concise displayed values with internal provenance
+正式记录中的单项实际值 SHALL 仅呈现已提供或确认的值及必要单位，不附带从消息读取、取值推断或系统时间读取过程的逐值说明。原话、确认、时间读取及估计依据 SHALL 保留在内部可核查状态；样本链接、来源实验与阶段、模板名称及版本、上样计算输入与依据等用于辨认材料和复核方法的结构化关联 SHALL 继续保留。对“刚刚完成”等相对时间，系统 SHALL 以本次会话可获得的北京时间提出候选并要求用户确认或修改；正式记录中的确认时间 SHALL 统一写成 `HH:mm`，不显示“约”。
+
+#### Scenario: Record a recently completed plating step
+- **WHEN** 用户说“刚刚完成铺板”，系统提出北京时间候选 `14:55`，用户确认该时刻
+- **THEN** 正文写“铺板完成时间｜14:55”，不附加取值说明；内部状态保留该候选及确认依据
+
+#### Scenario: Preserve a necessary source link
+- **WHEN** 记录中的一个 RNA 样本继承自此前实验
+- **THEN** 正文保留样本及来源实验的链接，同时实际数值后不拼接用户消息或系统读取过程
 
 ### Requirement: Explicit persistence boundaries
 系统 SHALL 将普通数值回答及会话内计算保留为会话草稿；明确阶段确认、暂停或最终结果指令才授权对应实验记录及恢复状态的写入。阶段确认或暂停保存 SHALL 覆盖已展示的计算输入、单位、依据和结果，包含尚未实际执行的拟用量；保存计算不得改变步骤实际执行状态。未保存草稿 SHALL 不被报告为可跨会话恢复的进度。
