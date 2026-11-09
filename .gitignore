@@ -36,6 +36,7 @@ __pycache__/
 /修改差异.patch
 
 # 测试目录与测试脚本
+/test/
 **/tests/
 **/__tests__/
 **/_test_*

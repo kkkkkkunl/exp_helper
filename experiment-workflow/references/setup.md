@@ -4,7 +4,7 @@
 
 ## 安装主 skill
 
-仓库另交付同级 `exp/SKILL.md` 作为 `$exp` 薄入口。部署时须让 `exp/` 与 `experiment-workflow/` 同级且均可被宿主定位；仅部署入口而缺少主技能时，应明确报告依赖缺失。已有 `$experiment-workflow` 直接调用继续有效。`exp` 不复制主规则，也不自动创建项目或保存实验。
+入口说明与路由已纳入主技能 `experiment-workflow/SKILL.md`，部署主技能即可，不依赖另一个入口目录。使用 `$experiment-workflow` 明确调用；会话中的 `$exp` 为简写意图，是否可由宿主直接定位不能仅凭文档认定。入口识别不自动创建项目或保存实验。
 
 ```bash
 python <解压目录>/experiment-workflow/scripts/install.py --project <项目根>
