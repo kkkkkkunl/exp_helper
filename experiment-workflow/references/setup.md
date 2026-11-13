@@ -4,7 +4,25 @@
 
 ## 安装主 skill
 
-入口说明与路由已纳入主技能 `experiment-workflow/SKILL.md`，部署主技能即可，不依赖另一个入口目录。使用 `$experiment-workflow` 明确调用；会话中的 `$exp` 为简写意图，是否可由宿主直接定位不能仅凭文档认定。入口识别不自动创建项目或保存实验。
+主技能 `experiment-workflow/SKILL.md` 承担路由，同级 `exp/SKILL.md` 提供 `$exp` 薄入口；也可直接调用 `$experiment-workflow`。必须区分宿主发现目录与实验项目内部技能库。入口识别不自动创建项目或保存实验。
+
+### 注册 Codex 输入框候选（只部署技能）
+
+从同时包含 `exp/` 和 `experiment-workflow/` 的源码包运行：
+
+```powershell
+py -3.9 -B experiment-workflow/scripts/install.py --project F:/experiment-workflow --host-only
+```
+
+两技能共同复制到指定项目 `.agents/skills/exp/` 和 `.agents/skills/experiment-workflow/`，完整保留主技能资源。此模式不初始化实验配置、记录、库存或日历。任一目标已存在时写入前拒绝覆盖；更新须另行明确范围。发布中断会报告已落盘目标，应核对后恢复，不代表安装成功。
+
+只有用户明确选择全局使用时，才运行 `py -3.9 -B experiment-workflow/scripts/install.py --user --host-only`，目标为当前用户 `.agents/skills/`；不默认写个人目录。运行安装器需要完整、同级的两技能源，可从源码包或完整的宿主部署运行。
+
+部署后在目标项目输入 `$exp`，选中实验工作流入口并核验主技能读取与按需路由；未出现可重新发现或重启 Codex。文件复制成功不等于真实候选验收成功，脚本返回 `selector_verified: false`，须单独核验。官方发现目录和刷新说明见 [OpenAI 技能文档](https://learn.chatgpt.com/docs/build-skills)。
+
+### 初始化实验项目（独立操作）
+
+以下旧入口保留内部主技能副本、配置和索引用途，不负责宿主输入框注册：
 
 ```bash
 python <解压目录>/experiment-workflow/scripts/install.py --project <项目根>

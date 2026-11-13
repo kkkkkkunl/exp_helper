@@ -42,11 +42,22 @@ def initialize(root, copy_skill=True):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--project', required=True)
+    scope = parser.add_mutually_exclusive_group(required=True)
+    scope.add_argument('--project')
+    scope.add_argument('--user', action='store_true', help='明确选择个人全局技能部署，须配合 --host-only')
+    parser.add_argument('--host-only', action='store_true', help='仅共同部署 Codex 技能，不初始化实验项目')
     parser.add_argument('--init-only', action='store_true')
     args = parser.parse_args()
+    if args.host_only and args.init_only:
+        parser.error('--host-only 与 --init-only 不可同时使用')
+    if args.user and not args.host_only:
+        parser.error('--user 须配合 --host-only')
     try:
-        C.ok(**initialize(args.project, not args.init_only))
+        if args.host_only:
+            import host_install
+            C.ok(**host_install.deploy(args.project, args.user))
+        else:
+            C.ok(**initialize(args.project, not args.init_only))
     except (C.SkillError, OSError, ValueError, TypeError, KeyError) as exc:
         C.die(str(exc), code='install_error')
 

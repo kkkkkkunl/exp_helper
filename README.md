@@ -7,6 +7,10 @@
 
 安装主技能：提供github连接，告诉助手技能包和项目文件夹的位置，例如：“把这个 experiment-workflow 技能安装到我的××项目。”
 
+Codex 输入框入口：在完整源码包根运行 `py -3.9 -B experiment-workflow/scripts/install.py --project <目标项目根> --host-only`，将 `exp` 与完整主技能共同部署到目标项目 `.agents/skills/`。随后输入 `$exp` 并选择实验工作流，也可调用 `$experiment-workflow`。未出现时重新发现或重启 Codex；实际候选与调用须单独验证。任一同名目标已存在时拒绝覆盖。
+
+该命令只注册宿主技能，不创建实验配置或接入日历。实验项目初始化仍使用不带 `--host-only` 的安装命令；内部 `skills/` 索引不等于输入框注册。个人全局安装仅在明确选择后使用 `--user --host-only`。详细边界见 [安装说明](experiment-workflow/references/setup.md)。
+
 安装实验技能：按需安装配套技能。例如，细胞 qPCR 使用 cell-qpcr和 qpcr-ddcq。
 
 配置日历：按提示选择日历并完成授权；暂不连接也可以先记录实验。

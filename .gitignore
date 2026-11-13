@@ -13,6 +13,10 @@ __pycache__/
 /openspec/
 /hisotry/
 /.agents/skills/.openspec-target
+/.agents/skills/exp/
+/.agents/skills/experiment-workflow/
+/.agents/skills/.experiment-workflow-install.lock
+/.agents/skills/.exp-install-*/
 /.agents/skills/openspec-*/
 
 # grill-with-docs 及其配套技能说明
