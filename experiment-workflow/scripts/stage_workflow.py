@@ -62,7 +62,25 @@ def template_for(p, draft, state):
                 'source': 'user', 'content': draft['plan'], 'sha256': C.sha256_text(draft['plan']), 'data': None}
     # Old ordinary records do not acquire a staged template from a changed project default.
     if draft.get('experiment') and not draft.get('template'): return None
-    return T.select(p, draft.get('template'))
+    if draft.get('session_template') is not None:
+        template = copy.deepcopy(draft['session_template'])
+        if (not isinstance(template, dict) or template.get('name') != draft.get('template') or
+                template.get('version') != str(draft.get('template_version')) or
+                not isinstance(template.get('content'), str) or
+                C.sha256_text(template['content']) != template.get('sha256')):
+            raise C.SkillError('会话模板内容或版本不一致')
+        if template.get('format') == 'staged':
+            if T.parse_content(template['content']) != template.get('data'):
+                raise C.SkillError('会话阶段模板解析内容不一致')
+        elif template.get('format') != 'plain':
+            raise C.SkillError('会话模板格式无效')
+        if 'record_layout' in template:
+            layout = template['record_layout']
+            if not isinstance(layout, str) or C.sha256_text(layout) != template.get('record_layout_sha256'):
+                raise C.SkillError('会话配套记录模板校验失败')
+            R.render('pending-experiment', template=template)
+        return template
+    return T.select(p, draft.get('template'), draft.get('template_version'))
 
 
 def _stages(template): return {s['id']: s for s in ((template or {}).get('data') or {}).get('stages', [])}
@@ -443,6 +461,7 @@ def preview(p, draft):
     # Bind the complete current state, record, sample snapshots, template content and action.
     token = digest({'draft': draft, 'state': state_before, 'record': C.sha256_file(old_record) if old_record.is_file() else None,
                     'samples': sample_hashes, 'template': (template or {}).get('sha256'),
+                    'record_layout': (template or {}).get('record_layout_sha256'),
                     'inventory': inventory_plan['hash'] if inventory_plan else None,
                     'skill': (computed['package'] or {}).get('sha256'), 'calculations': state['calculations']})
     stage_prompts = prompts(state, template, sample_data) if template and template['format'] == 'staged' else []

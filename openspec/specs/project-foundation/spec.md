@@ -31,16 +31,46 @@
 - **WHEN** 用户只记录过程且分析技能缺失
 - **THEN** 系统仍能完成记录与相关库存核查，不因无关分析依赖阻塞
 
-### Requirement: Integrated entry owned by the main workflow skill
-主技能 SHALL 统一提供入口说明及路由，不要求独立 exp/SKILL.md 或双技能共同部署。系统 SHALL 保留主技能实际名称的明确调用；会话中的 `$exp` 简写 SHALL 不被冒充为宿主已注册的独立技能。入口识别 SHALL 不构成保存授权，子技能仍按既有实验确定条件加载。
+### Requirement: Discoverable exp entry delegates to the main workflow skill
+系统 SHALL 提供名为 `exp` 的薄入口，保留名为 `experiment-workflow` 的完整主技能及其路由职责。入口 SHALL 读取同级主技能并传递用户意图，后续相对引用以主技能目录为基准，不复制主规则。入口识别 SHALL 不构成保存、库存或日历授权，子技能仍按既有实验确定条件加载。
 
-#### Scenario: Enter through the main skill
-- **WHEN** 用户明确调用主技能，并确定实验类型及方法模板或方案
-- **THEN** 主技能按既有优先级定位当前实验的技能，只加载当前步骤所需内容，不依赖独立入口文件
+#### Scenario: Enter through exp
+- **WHEN** 用户选中并调用 `$exp`，同级主技能完整可读
+- **THEN** 入口读取主技能并传递本次上下文，按需路由，不因入口调用创建实验或保存记录
 
-#### Scenario: Host cannot resolve a shorthand
-- **WHEN** 宿主没有注册可独立定位的 exp 技能
-- **THEN** 使用主技能实际名称进行明确调用，不因简写出现在说明中就声称独立技能已安装，也不要求恢复独立入口文件
+#### Scenario: Direct main skill invocation remains available
+- **WHEN** 用户明确调用 `$experiment-workflow`
+- **THEN** 系统沿用主工作流及既有子技能激活规则，不要求绕经 exp
+
+#### Scenario: Main skill dependency is missing
+- **WHEN** exp 存在而同级主技能缺失或不可读
+- **THEN** 系统报告安装不完整及缺失目标，不假报进入成功，不自动下载或执行替代工作流
+
+### Requirement: Paired host discovery deployment with conflict protection
+系统 SHALL 向明确指定项目的 `.agents/skills/` 共同部署同级 exp 与完整主技能，保留全部脚本、参考及资源；个人全局 `.agents/skills/` 部署 SHALL 仅按用户明确选择执行。实验项目内部技能库及索引 SHALL 与宿主发现目录区分，既有初始化与内部索引兼容性 SHALL 保留。安装前 SHALL 检查来源与双目标，未获明确更新授权时任一同名冲突 SHALL 在写入前拒绝部署，不覆盖或留下单边新部署；中断 SHALL 报告实际状态，不假报成功。
+
+#### Scenario: Deploy to a specified project
+- **WHEN** 用户明确安装到指定项目，来源完整且双目标均不存在
+- **THEN** 两技能共同放入项目 `.agents/skills/`，不写个人全局目录，不修改既有实验配置、记录、库存或日历
+
+#### Scenario: Either destination already exists
+- **WHEN** 任一同名目标已存在且未获明确更新授权
+- **THEN** 安装在写入前报告冲突，保留已有内容，不新增另一半部署
+
+#### Scenario: Only an internal skill library is populated
+- **WHEN** 主技能仅存在于实验项目内部 skills 目录或索引
+- **THEN** 系统不据此宣称宿主已发现入口，明确仍需宿主发现目录部署
+
+### Requirement: Evidence-based host selector acceptance
+系统 SHALL 分别记录文件检查、真实宿主候选发现及真实调用转交的结果。真实候选验收 SHALL 验证输入 `$exp` 后可识别并选中本入口，不要求改变排序或自动填入。无法访问真实宿主 SHALL 标明未验证，不以静态或模拟检查冒充联想成功。
+
+#### Scenario: Select the workflow in the real composer
+- **WHEN** 完成共同部署及宿主重新发现，在目标项目输入 `$exp`
+- **THEN** 候选中可识别并选中本入口，随后读取主技能并按需路由；存在其他匹配候选不影响判定
+
+#### Scenario: Only static checks are available
+- **WHEN** 已检查文件结构但无法操作真实输入框
+- **THEN** 仅报告静态结果，真实候选及调用验收保留未验证，不将本轮整体任务标完
 
 ### Requirement: Activate the experiment skill when the experiment is determined
 用户已通过主技能明确进入工作流（包括已被会话识别的入口简写），且明确开始或继续某次实验、实验类型及模板或方案已明确后，系统 SHALL 立即定位并加载对应实验级 skill，按当前步骤使用相关内容，不等待另发计算或结果分析请求。技能定位 SHALL 依次采用用户明确指定、所选模板明确绑定、实验类型匹配；未指定技能且存在多个候选或绑定冲突时 SHALL 展示差异并明确选择。缺失技能 SHALL 暂停依赖它的计算，保留独立记录，不自行替代或下载。

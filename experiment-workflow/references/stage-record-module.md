@@ -5,6 +5,7 @@
 ## 会话行为
 
 1. 识别已有实验或新实验。已有实验先 resume；新实验预览阶段不分配编号。使用旧样品开展新实验另建编号，前序操作只链接来源。
+   新实验选定普通或阶段方法后，立即用 `stage_templates.py --project <项目根> --name <方法名>` 读取方法和配套格式，在会话中独立复制填写稿，并记住所选 `template`、`template_version` 和完整返回对象 `session_template`。首次保存的预览与保存均传入这三个字段，以固定会话实际选中的内容。旧方法没有配套声明时使用通用模板；已声明但损坏时报告方法、版本及路径并停止，不静默回退。每次实验各自持有填写内容，不能修改项目空白模板。保存后续接使用实验快照，显式升级遵循既有映射规则。
 2. 按模板步骤集中提示相关字段。用户自由文本或多步骤输入由会话整理为结构化 values，只追问缺项和冲突；返回的 prompts 提供模板字段与条件依据，不补造流程。
    实验及方案确定后同时遵循 [实验技能模块](experiment-skill-module.md)，按当前步骤从 skill 取得计算规则。模板不执行计算，预览返回 calculations 与技能状态；缺参仅暂停相关计算。
    预览还返回 `questions.questions` 与编号 `questions.fallback`。宿主优先以问答框一次提出当前步骤最多三个独立的阻断问题；有可靠候选时供选择，其余开放输入。后续依赖问题下一轮再问，已提供值不重问。无问答框时用 fallback 原样集中追问；冲突未解决或相对时间未确认不得保存为事实。
@@ -23,7 +24,8 @@
 | action | confirm、pause、final_results、correct、upgrade |
 | raw_input | 该次用户原话，保存时作为来源；不得用模型编造的输入替代 |
 | experiment | 已有编号；新实验省略 |
-| template / entry | 明确选择的方法模板和合法入口 |
+| template / template_version / entry | 明确选择的方法模板、会话选定版本和合法入口；新实验首次保存须携带选定版本 |
+| session_template | 新实验在会话选定时读取的完整模板对象；首次保存前保留在内存并传入预览和保存 |
 | experiment_type / experiment_skill / plan | 已确定实验类型、可选明确技能选择或用户方案；不靠关键词猜测开始意图 |
 | calculations | 独立计算数组，包含 id、calculation、sample、stage、step、inputs、params、可选 depends_on 与更正 reason，详见实验技能模块 |
 | skill_evidence_hash / skill_upgrade | 可选的既有计算依据绑定／明确技能升级（skill、confirmed、reason）；升级须展示前后依据、文件差异及影响后确认 |

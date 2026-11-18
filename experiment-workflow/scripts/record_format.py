@@ -22,7 +22,8 @@ def render(eid, actual_date=None, project=None, purpose=None, reference=None, te
               '模板版本': (template or {}).get('version') or '',
               '模板文件': (template or {}).get('source') or ''}
     lines = []
-    for line in template_text().splitlines():
+    layout = (template or {}).get('record_layout', template_text())
+    for line in layout.splitlines():
         names = TOKEN.findall(line)
         if any(name not in values for name in names):
             raise C.SkillError('正式记录模板存在未知字段：' + '、'.join(n for n in names if n not in values))

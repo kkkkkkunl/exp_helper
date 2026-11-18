@@ -11,6 +11,8 @@ description: 实验及方案确定后启动对应技能，按步骤计算并交�
 
 ## 定位与路由
 
+- 新建实验选定方法后，用 scripts/stage_templates.py 读取模板。存在 record_layout 时自动使用配套空白记录作为本次会话的独立填写稿，记住方法名称和版本。首次保存通过阶段记录流程传入 template 和 template_version，保存后使用快照。普通旧模板继续使用通用记录。
+
 - 已有项目用 project.py find 定位。仅安装、首次初始化或维护时读取 [安装说明](references/setup.md)，保留已有配置。
 - 普通记录、补录只读 [记录模块](references/record-module.md)。数值回答保持会话草稿，明确保存才写入文件。
 - 用户明确开始或继续实验，类型及模板或方案确定后，立即读 [实验技能与计算](references/experiment-skill-module.md)，按用户指定→模板绑定→实验类型定位目标 skill，只加载当前步骤相关内容。讨论备选不激活，不等待结果阶段或另发计算指令。

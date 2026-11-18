@@ -101,29 +101,58 @@ def load(p, config):
     fmt = config.get('format', 'plain')
     if fmt not in ('plain', 'staged'): raise C.SkillError('未知模板格式')
     data = parse_content(content) if fmt == 'staged' else None
-    return {'name': config.get('name'), 'format': fmt, 'version': str(config.get('version', 'unspecified')),
+    paired = {}
+    if 'record_layout' in config:
+        layout_path = (p.root / str(config['record_layout'])).resolve()
+        if not layout_path.is_relative_to(p.root) or not layout_path.is_file():
+            raise C.SkillError(f'方法 {config.get("name")} 版本 {config.get("version", "unspecified")} 的配套记录模板不存在或路径无效：{layout_path}')
+        layout = layout_path.read_text(encoding='utf-8')
+        layout_hash = C.sha256_text(layout)
+        if layout_hash != config.get('record_layout_sha256'):
+            raise C.SkillError(f'方法 {config.get("name")} 版本 {config.get("version", "unspecified")} 的配套记录模板校验失败：{layout_path}')
+        paired = {'record_layout': layout, 'record_layout_sha256': layout_hash}
+    return {**paired, 'name': config.get('name'), 'format': fmt, 'version': str(config.get('version', 'unspecified')),
             'experiment_skill': config.get('experiment_skill'),
             'source': path.relative_to(p.root).as_posix() if path.is_relative_to(p.root) else str(path),
             'sha256': C.sha256_text(content), 'content': content, 'data': data}
 
 
-def select(p, name=None):
+def select(p, name=None, version=None):
     config = p.template_by_name(name) if name else p.default_template()
     if not config:
         if p.cfg.get('method_templates'): raise C.SkillError('需要明确选择模板')
         return None
+    if version is not None and str(config.get('version')) != str(version):
+        if not name or not isinstance(version, str) or not version:
+            raise C.SkillError('所选方法版本无效')
+        base = p.root / 'templates' / C.sha256_text(name)
+        if re.fullmatch(r'(?:[0-9]+|generated-[0-9]+)', version):
+            manifest = base / version / 'pair.json'
+        else:
+            manifest = base / 'legacy' / C.sha256_text(version) / 'pair.json'
+        if not manifest.is_file():
+            manifest = base / 'legacy' / C.sha256_text(version) / 'pair.json'
+        if not manifest.is_file():
+            raise C.SkillError('所选方法版本不存在')
+        config = json.loads(manifest.read_text(encoding='utf-8'))
+        if config.get('name') != name or str(config.get('version')) != str(version):
+            raise C.SkillError('所选方法版本登记不一致')
     return load(p, config)
 
 
 def freeze(p, eid, template):
     if template is None: return None
-    path = p.experiment_dir(eid) / C.STATE_DIR / 'templates' / (template['sha256'] + '.json')
+    key = template['sha256']
+    if template.get('record_layout_sha256'):
+        key = C.sha256_text(key + template['record_layout_sha256'])
+    path = p.experiment_dir(eid) / C.STATE_DIR / 'templates' / (key + '.json')
     if path.exists():
         if json.loads(path.read_text(encoding='utf-8')) != template:
             raise C.SkillError('已有模板快照与同哈希内容不一致')
     else: C.atomic_write_text(path, C.json_text(template))
     return {k: template[k] for k in ('name', 'format', 'version', 'source', 'sha256')} | {
-        'path': path.relative_to(p.root).as_posix(), 'experiment_skill': template.get('experiment_skill')}
+        'path': path.relative_to(p.root).as_posix(), 'experiment_skill': template.get('experiment_skill'),
+        **({'record_layout_sha256': template['record_layout_sha256']} if template.get('record_layout_sha256') else {})}
 
 
 def frozen(p, snapshot):
@@ -136,6 +165,10 @@ def frozen(p, snapshot):
         raise C.SkillError('模板快照元信息校验失败')
     if 'experiment_skill' in snapshot and template.get('experiment_skill') != snapshot['experiment_skill']:
         raise C.SkillError('模板快照技能绑定校验失败')
+    if 'record_layout_sha256' in snapshot:
+        if (template.get('record_layout_sha256') != snapshot['record_layout_sha256'] or
+                C.sha256_text(template.get('record_layout', '')) != snapshot['record_layout_sha256']):
+            raise C.SkillError('配套记录模板快照校验失败')
     if template['format'] == 'staged':
         parsed = parse_content(template['content'])
         if parsed != template['data']: raise C.SkillError('模板解析内容与原文不一致')
@@ -219,10 +252,10 @@ def upgrade_preview(state, old, new, stage_map, step_map):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--project', required=True); parser.add_argument('--name')
+    parser.add_argument('--project', required=True); parser.add_argument('--name'); parser.add_argument('--version')
     args = parser.parse_args()
     try:
-        p = C.Project(args.project); C.ok(template=select(p, args.name))
+        p = C.Project(args.project); C.ok(template=select(p, args.name, args.version))
     except (C.SkillError, ValueError, OSError) as exc: C.die(str(exc), code='template_error')
 
 

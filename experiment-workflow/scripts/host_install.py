@@ -12,7 +12,8 @@ def deploy(project=None, user=False, source=None):
         raise C.SkillError('请选择明确项目或个人全局部署，二者不可同时使用')
     main = Path(source or Path(__file__).resolve().parent.parent).resolve()
     entry = main.parent / 'exp'
-    for folder, name in ((main, 'experiment-workflow'), (entry, 'exp')):
+    origins = (entry, main, main.parent / 'expmodel')
+    for folder, name in ((main, 'experiment-workflow'), (entry, 'exp'), (origins[2], 'expmodel')):
         manifest = folder / 'SKILL.md'
         if not manifest.is_file() or not os.access(manifest, os.R_OK):
             raise C.SkillError('安装源不完整：' + str(manifest))
@@ -28,10 +29,10 @@ def deploy(project=None, user=False, source=None):
     for parent in (base, base / '.agents', destination):
         if parent.is_symlink():
             raise C.SkillError('部署目录不能是符号链接：' + str(parent))
-    for origin in (main, entry):
+    for origin in origins:
         if destination.resolve().is_relative_to(origin):
             raise C.SkillError('目标位于技能源内，拒绝递归安装')
-    targets = [destination / 'exp', destination / 'experiment-workflow']
+    targets = [destination / origin.name for origin in origins]
     def check_targets():
         for target in targets:
             if os.path.lexists(target):
@@ -44,7 +45,7 @@ def deploy(project=None, user=False, source=None):
         # on a publication failure rather than deleting uncertain destinations.
         with tempfile.TemporaryDirectory(prefix='.exp-install-', dir=str(destination)) as stage:
             stage = Path(stage)
-            for origin in (entry, main):
+            for origin in origins:
                 shutil.copytree(origin, stage / origin.name,
                                 ignore=shutil.ignore_patterns('__pycache__', '.git', '*.pyc'))
             published = []
