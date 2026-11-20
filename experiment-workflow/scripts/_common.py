@@ -248,6 +248,28 @@ def safe_id(value):
     return str(value)
 
 
+def marked_blocks(content, marker):
+    """Read top-level Markdown fences bearing a specific info string."""
+    blocks, lines = [], []
+    fence, marked = None, False
+    for line in content.splitlines():
+        if fence:
+            if re.fullmatch(r' {0,3}' + re.escape(fence[0]) + r'{' + str(len(fence)) + r',}[ \t]*', line):
+                if marked:
+                    blocks.append('\n'.join(lines))
+                fence, marked, lines = None, False, []
+            elif marked:
+                lines.append(line)
+            continue
+        match = re.fullmatch(r' {0,3}(`{3,}|~{3,})(.*)', line)
+        if match:
+            fence = match[1]
+            marked = match[2].strip() == marker
+    if marked:
+        raise SkillError(f'Markdown {marker} 代码块未闭合')
+    return blocks
+
+
 # ---------------------------------------------------------------- frontmatter
 
 

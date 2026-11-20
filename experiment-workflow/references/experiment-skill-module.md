@@ -15,7 +15,7 @@ py -3.9 -B scripts/project.py activate --project <项目根> --started --experim
 
 ## 计算与保存
 
-模板只提供流程、输入和记录结构，不维护计算。会话遵循目标 skill 的公式、单位、参数和工具要求；参数须有本次方案来源或明确确认，实测量不能默认生成。输入齐全时执行当前计算并立即展示，不要求用户另说一次计算。必要输入缺失、单位不兼容、负补液量或违反技能约束时列出原因，不能补零或将异常值当作执行方案。
+模板提供流程、输入和记录结构，并定义待配制溶液的公式。实验级技能执行并校验计算；模板配制公式与常规铺板见 [铺板与试剂配制](preparation.md)，专业计算仍由对应技能的公式和工具执行。参数须有本次方案来源或明确确认，实测量不能默认生成。输入齐全时执行当前计算并立即展示，不要求用户另说一次计算。必要输入缺失、单位不兼容、负补液量或违反技能约束时列出原因，不能补零或将异常值当作执行方案。
 
 阶段 preview/save 的 `calculations` 与 `operations` 独立。每项计算提供：
 
@@ -35,7 +35,7 @@ py -3.9 -B scripts/project.py activate --project <项目根> --started --experim
 
 ## 技能作者的可选可执行契约
 
-技能可以提供 `experiment-skill.json`，使用 version 1、可选 experiment_types 和 tools，以及 calculations 映射。每项 calculation 声明 entrypoint（相对技能目录的 Python 脚本）、basis、inputs 与 outputs；每个数值字段声明 unit，可声明 minimum，输入默认 required，也可明确 required:false。实验公式只能存在于 skill 自己的规则与脚本中，主工作流不解释公式表达式。
+技能可以提供 `experiment-skill.json`，使用 version 1、可选 experiment_types 和 tools，以及 calculations 映射。每项 calculation 声明 entrypoint（相对技能目录的 Python 脚本）、basis、inputs 与 outputs；每个数值字段声明 unit，可声明 minimum，输入默认 required，也可明确 required:false。专业实验公式随所属技能维护，模板中的试剂配制算式使用配制计算接口。
 
 脚本从标准输入读取该次计算的 JSON 对象，在标准输出仅返回 JSON：`status: computed` 及 outputs（输出名到 value、unit）；异常应返回原因。使用当前 Python 以 `-B` 执行，超时 30 秒，工作流在临时目录复制目标技能后运行，偶发产物不会写入实验项目。tools 中声明的外部程序须可用；不自动安装。临时测试技能不能冒充已交付的具体专业技能。
 

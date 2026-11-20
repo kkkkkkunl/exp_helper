@@ -407,12 +407,25 @@ def preview(p, draft):
                 cells = line.split('|'); cells[2] = ' ' + actual_date + ' '; line = '|'.join(cells)
             lines.append(line)
         text = ''.join(lines)
+    template_upgrade = None
     if draft['action'] == 'upgrade':
-        if not draft.get('mapping'): raise C.SkillError('升级须提供阶段和步骤映射')
-        target = T.select(p, draft.get('target_template'))
-        mapping = T.upgrade_preview(state, template, target, draft['mapping'].get('stages', {}), draft['mapping'].get('steps', {}))
+        target = T.select(p, draft.get('target_template'), draft.get('target_template_version'))
+        if not template or not target:
+            raise C.SkillError('升级须明确原方法及目标方法')
+        if template['format'] == target['format'] == 'plain':
+            mapped = state['stage_progress']
+        else:
+            if not draft.get('mapping'): raise C.SkillError('升级须提供阶段和步骤映射')
+            stages = draft['mapping'].get('stages', {})
+            steps = draft['mapping'].get('steps', {})
+            mapped = T.upgrade_preview(state, template, target, stages, steps)['mapped']
+            for item in state['calculations'].values():
+                old_stage = item['stage']
+                item['stage'] = stages.get(old_stage, old_stage)
+                item['step'] = steps.get(f'{old_stage}/{item["step"]}', item['step'])
+        template_upgrade = E.formula_upgrade(state, template, target)
         state.setdefault('template_history', []).append({'snapshot': state.get('template_snapshot'), 'progress': copy.deepcopy(state['stage_progress'])})
-        state['stage_progress'] = mapping['mapped']; template = target
+        state['stage_progress'] = mapped; template = target
         state['template_snapshot'] = None
     method_lines, conditions = _advance(p, draft, state, template, sample_data) if template and template['format'] == 'staged' else ([], [])
     if draft.get('operations') and (not template or template['format'] != 'staged'):
@@ -421,7 +434,7 @@ def preview(p, draft):
     method_lines.extend(value_lines)
     if draft.get('method_text'): method_lines.append(draft['method_text'])
     text = _insert(text, '## 实验方案', '\n'.join(method_lines))
-    computed = E.prepare(p, draft, state, template)
+    computed = E.prepare(p, draft, state, template, template_upgrade)
     if template and template['format'] == 'staged':
         for calculation in state['calculations'].values():
             definition = T.stage(template, calculation['stage'])
@@ -467,7 +480,7 @@ def preview(p, draft):
     stage_prompts = prompts(state, template, sample_data) if template and template['format'] == 'staged' else []
     questions = question_plan(stage_prompts, draft.get('conflicts', []), draft.get('actual_values', []), draft.get('operations', []))
     return {'preview_hash': token, 'record': text, 'state': state, 'template': template,
-            'skill': computed['resolution'], 'skill_upgrade': computed['upgrade'],
+            'skill': computed['resolution'], 'skill_upgrade': computed['upgrade'], 'template_upgrade': template_upgrade,
             'calculations': list(state['calculations'].values()), '_skill_package': computed['package'],
             'inventory': inventory_plan, 'conditions': conditions,
             'next_action': 'resolve_conditions' if conditions or questions['questions'] else 'review_and_confirm',

@@ -71,24 +71,7 @@ def validate(data):
 
 def parse_content(content):
     """Read standalone YAML or one explicitly marked YAML fence in Markdown."""
-    blocks = []
-    fence = None
-    marked = False
-    lines = []
-    for line in content.splitlines():
-        if fence is not None:
-            if re.fullmatch(r' {0,3}' + re.escape(fence[0]) + r'{' + str(len(fence)) + r',}[ \t]*', line):
-                if marked: blocks.append('\n'.join(lines))
-                fence, marked, lines = None, False, []
-            elif marked:
-                lines.append(line)
-            continue
-        match = re.fullmatch(r' {0,3}(`{3,}|~{3,})(.*)', line)
-        if match:
-            fence = match[1]
-            marked = match[2].strip() == 'yaml experiment-workflow'
-    if marked:
-        raise C.SkillError('Markdown 阶段 YAML 代码块未闭合')
+    blocks = C.marked_blocks(content, 'yaml experiment-workflow')
     if len(blocks) > 1:
         raise C.SkillError('Markdown 只能包含一个 yaml experiment-workflow 代码块')
     return validate(C._yamlish.loads(blocks[0] if blocks else content))

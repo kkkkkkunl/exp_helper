@@ -5,12 +5,15 @@ import sys
 from pathlib import Path
 
 import _common as C
+import preparation
 import record_format as R
 import stage_templates as T
 import workflow as W
 
 
-def publish(root, prepared):
+def publish(root, prepared, *, require_catalog=False):
+    if not isinstance(prepared, dict):
+        raise C.SkillError('待发布模板须为 JSON 对象')
     name = prepared.get('name')
     method = prepared.get('method')
     layout = prepared.get('layout')
@@ -21,6 +24,7 @@ def publish(root, prepared):
         raise C.SkillError('未知模板格式')
     if fmt == 'staged':
         T.parse_content(method)
+    preparation.catalog(method, required=require_catalog)
     R.render('20260101-000000', template={'record_layout': layout})
     p = C.Project(root)
     with C.FileLock(p.state / 'workflow.lock'):
@@ -38,6 +42,8 @@ def publish(root, prepared):
                 return {'reused': True, 'version': loaded['version']}
             if str(prepared.get('expected_version')) != loaded['version']:
                 raise C.SkillError('模板版本已变化，请重新比较并选择字段')
+            if C.marked_blocks(loaded['content'], preparation.MARKER):
+                preparation.catalog(method, required=True)
             old_version = loaded['version']
             if not old.get('record_layout'):
                 version = 'generated-1'
@@ -81,14 +87,33 @@ def publish(root, prepared):
         return {'reused': False, 'version': str(version), 'template': entry}
 
 
+def save_draft(root, prepared):
+    if not isinstance(prepared, dict) or not preparation.text(prepared.get('name')):
+        raise C.SkillError('模板草稿须提供方法名称')
+    if not preparation.text(prepared.get('method')):
+        raise C.SkillError('模板草稿须提供当前方法内容')
+    try:
+        preparation.catalog(prepared['method'], required=True)
+        pending = None
+    except C.SkillError as exc:
+        pending = str(exc)
+    payload = C.json_text(prepared)
+    path = C.Project(root).state / 'template-drafts' / (C.sha256_text(payload) + '.json')
+    if not path.exists():
+        C.atomic_write_text(path, payload)
+    return {'status': 'draft', 'path': str(path), 'publication_blocker': pending}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--project', required=True)
     parser.add_argument('--input', required=True)
+    parser.add_argument('--draft', action='store_true', help='保存待补草稿')
     args = parser.parse_args()
     try:
         prepared = json.loads(sys.stdin.buffer.read().decode('utf-8-sig')) if args.input == '-' else json.loads(Path(args.input).read_text(encoding='utf-8-sig'))
-        C.ok(result=publish(C.find_project_root(args.project), prepared))
+        root = C.find_project_root(args.project)
+        C.ok(result=save_draft(root, prepared) if args.draft else publish(root, prepared, require_catalog=True))
     except (C.SkillError, OSError, ValueError, TypeError, KeyError) as exc:
         C.die(str(exc), code='template_publish_error')
 

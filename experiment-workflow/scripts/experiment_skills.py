@@ -14,6 +14,7 @@ import sys
 import tempfile
 
 import _common as C
+import preparation
 import skill_store
 
 
@@ -266,7 +267,24 @@ def host_result(package, request, definition=None):
             'tool_version': str(evidence['tool_version']), 'host_execution': copy.deepcopy(evidence)}
 
 
-def prepare(p, draft, state, template):
+def formula_upgrade(state, old, new):
+    before = {key: item for key, item in preparation.catalog(old['content']).items() if item['kind'] == 'prepare'}
+    after = {key: item for key, item in preparation.catalog(new['content']).items() if item['kind'] == 'prepare'}
+    changes = {key: {'before': before.get(key), 'after': after.get(key)}
+               for key in sorted(before.keys() | after.keys()) if before.get(key) != after.get(key)}
+    calculations = state.get('calculations', {})
+    affected = {key for key, item in calculations.items()
+                if item.get('rule_type') == 'reagent_formula' and item['calculation'] in changes}
+    while True:
+        downstream = {key for key, item in calculations.items() if affected.intersection(item.get('depends_on', []))}
+        if downstream <= affected:
+            break
+        affected.update(downstream)
+    return {'from_version': old['version'], 'to_version': new['version'],
+            'formulas': changes, 'affected': sorted(affected)}
+
+
+def prepare(p, draft, state, template, template_upgrade=None):
     """Pure calculation preview. Saved calculations are separate from executed operations."""
     requests = draft.get('calculations', [])
     upgrade = draft.get('skill_upgrade')
@@ -283,6 +301,8 @@ def prepare(p, draft, state, template):
     if upgrade and not package:
         raise C.SkillError('升级目标技能不可用')
     calculations = state.setdefault('calculations', {})
+    stale = set((template_upgrade or {}).get('affected', []))
+    recomputed = set()
     changed = set()
     seen = set()
     for request in requests:
@@ -292,14 +312,19 @@ def prepare(p, draft, state, template):
         for field in ('sample', 'stage', 'step'):
             if not request.get(field): raise C.SkillError(f'计算缺少 {field}')
         expected_attempt = state.get('stage_progress', {}).get(request['sample'], {}).get(request['stage'], {}).get('attempt', 1)
-        info = {k: copy.deepcopy(request[k]) for k in ('sample', 'stage', 'step', 'calculation', 'inputs', 'params', 'depends_on') if k in request}
+        info = {k: copy.deepcopy(request[k]) for k in
+                ('sample', 'stage', 'step', 'calculation', 'inputs', 'params', 'depends_on', 'rule_type') if k in request}
         info.update(id=key, attempt=expected_attempt, source='calculated')
         dependencies = info.get('depends_on', [])
         if key in dependencies or any(dep not in calculations for dep in dependencies):
             raise C.SkillError('计算依赖须先存在且不得引用自身')
-        if package:
+        rule_type = request.get('rule_type')
+        if package or rule_type:
             invalid_source = []
-            for input_name, value in info.get('inputs', {}).items():
+            supplied = info.get('inputs', {})
+            if not isinstance(supplied, dict):
+                raise C.SkillError('计算 inputs 须为映射')
+            for input_name, value in supplied.items():
                 if isinstance(value, dict) and value.get('source') == 'calculated':
                     upstream = calculations.get(value.get('calculation_id'), {})
                     output = upstream.get('outputs', {}).get(value.get('output'), {})
@@ -308,20 +333,36 @@ def prepare(p, draft, state, template):
                         invalid_source.append(input_name)
             if invalid_source:
                 answer = {'status': 'invalid_inputs', 'reason': '计算输入无法匹配已声明依赖的实际输出', 'errors': invalid_source}
-            elif any(calculations[dep].get('status') != 'computed' for dep in dependencies):
+            elif any(calculations[dep].get('status') != 'computed'
+                     or (dep in stale and dep not in recomputed) for dep in dependencies):
                 answer = {'status': 'needs_review', 'reason': '依赖计算尚不可用，须复核输入'}
-            else: answer = execute(package, request)
-            info.update(skill=package['skill'], skill_hash=package['sha256'], skill_version=package['version'])
+            elif rule_type == 'cell_seeding':
+                answer = preparation.seeding(request)
+            elif rule_type == 'reagent_formula':
+                answer = preparation.recipe(request, template)
+            elif rule_type:
+                raise C.SkillError('未知配制计算类型')
+            else:
+                answer = execute(package, request)
+            if rule_type:
+                info.update(skill='experiment-workflow/preparation', skill_version='1')
+            else:
+                info.update(skill=package['skill'], skill_hash=package['sha256'], skill_version=package['version'])
         else:
             answer = {'status': resolution['status'], 'reason': resolution.get('reason') or resolution.get('message')}
         info.update(answer)
+        if answer['status'] == 'computed':
+            recomputed.add(key)
         old = calculations.get(key)
         if old != info:
-            if old and not (request.get('reason') or draft.get('reason') or upgrade):
+            reason = request.get('reason') or draft.get('reason') or (upgrade or {}).get('reason')
+            if key in stale and template_upgrade:
+                reason = reason or draft['raw_input']
+            if old and not reason:
                 raise C.SkillError('已保存计算变化须说明更正或重算依据')
             if old:
                 state.setdefault('calculation_changes', []).append({'id': key, 'before': old,
-                    'reason': request.get('reason') or draft.get('reason') or upgrade['reason'], 'action_id': draft['action_id']})
+                    'reason': reason, 'action_id': draft['action_id']})
             calculations[key] = info
             changed.add(key)
     visiting, visited = set(), set()
@@ -337,6 +378,9 @@ def prepare(p, draft, state, template):
         for key, info in calculations.items():
             if key not in changed and info.get('skill_hash') == previous['sha256']:
                 info.update(status='needs_review', reason='技能依据升级，需按新依据复核'); changed.add(key)
+    for key in stale - changed:
+        calculations[key].update(status='needs_review', reason='配制公式或其依赖已变化，需按新方法版本复核')
+        changed.add(key)
     pending = set(changed)
     while pending:
         current = pending.pop()
@@ -365,6 +409,9 @@ def render(calculations):
                   f'- 规则：{item.get("basis", item.get("calculation", ""))}',
                   '- 输入：' + json.dumps(item.get('inputs', {}), ensure_ascii=False),
                   '- 参数：' + json.dumps(item.get('params', {}), ensure_ascii=False)]
+        if item.get('formula_definition'):
+            lines.append(f'- 方法：{item["template_name"]} {item["template_version"]}；依据哈希：{item["template_hash"]}')
+            lines.append('- 配制公式及来源：' + json.dumps(item['formula_definition'], ensure_ascii=False))
         if item.get('status') == 'computed':
             lines.append('- 计算用量：' + json.dumps(item.get('outputs', {}), ensure_ascii=False))
         else:
